@@ -4,6 +4,7 @@ import {
 	canAssign,
 	canDelete,
 	canEdit,
+	computeTreeDelete,
 	canView,
 	isOverdue,
 	isValidDate,
@@ -63,19 +64,63 @@ describe('validateTitle', () => {
 
 describe('permissions', () => {
 	const t = { createdBy: 'c', assigneeId: 'a' };
+	const parent = { createdBy: 'p', assigneeId: 'pa' };
 	it('creator and assignee see/edit; others do not', () => {
 		for (const u of ['c', 'a']) {
-			expect(canView(t, { userId: u })).toBe(true);
+			expect(canView([t], { userId: u })).toBe(true);
 			expect(canEdit(t, { userId: u })).toBe(true);
 		}
-		expect(canView(t, { userId: 'x' })).toBe(false);
+		expect(canView([t], { userId: 'x' })).toBe(false);
 		expect(canEdit(t, { userId: 'x' })).toBe(false);
+	});
+	it('ancestors grant view but not edit (D14/D45)', () => {
+		for (const u of ['p', 'pa']) {
+			expect(canView([t, parent], { userId: u })).toBe(true);
+			expect(canEdit(t, { userId: u })).toBe(false);
+		}
+		expect(canView([t, parent], { userId: 'x' })).toBe(false);
 	});
 	it('only creator assigns/deletes', () => {
 		expect(canAssign(t, { userId: 'c' })).toBe(true);
 		expect(canDelete(t, { userId: 'c' })).toBe(true);
 		expect(canAssign(t, { userId: 'a' })).toBe(false);
 		expect(canDelete(t, { userId: 'a' })).toBe(false);
+	});
+});
+
+describe('computeTreeDelete', () => {
+	const e = (childId: string, parentId: string, createdBy = 'me') => ({
+		childId,
+		parentId,
+		createdBy
+	});
+	it('deletes my descendants whose parents are all inside, handling diamonds', () => {
+		// T -> A, T -> B, A -> D, B -> D (diamond), T -> X(not mine), X -> Y(mine, only parent X)
+		const r = computeTreeDelete('T', 'me', [
+			e('A', 'T'),
+			e('B', 'T'),
+			e('D', 'A'),
+			e('D', 'B'),
+			e('X', 'T', 'other'),
+			e('Y', 'X')
+		]);
+		expect(r.deleteIds.sort()).toEqual(['A', 'B', 'D', 'T']);
+		expect(r).toMatchObject({ keptNotMine: 1, keptShared: 1, becomingTopLevel: 1 });
+	});
+	it('keeps a descendant that still has a parent outside', () => {
+		const r = computeTreeDelete('T', 'me', [e('A', 'T'), e('A', 'OUT'), e('B', 'A')]);
+		expect(r.deleteIds).toEqual(['T']);
+		expect(r).toMatchObject({ keptShared: 2, keptNotMine: 0, becomingTopLevel: 0 });
+	});
+	it('is independent of edge order', () => {
+		const edges = [e('D', 'A'), e('D', 'B'), e('B', 'T'), e('A', 'T')];
+		expect(computeTreeDelete('T', 'me', edges).deleteIds.sort()).toEqual(['A', 'B', 'D', 'T']);
+		expect(computeTreeDelete('T', 'me', [...edges].reverse()).deleteIds.sort()).toEqual([
+			'A',
+			'B',
+			'D',
+			'T'
+		]);
 	});
 });
 

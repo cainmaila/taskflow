@@ -8,7 +8,9 @@ export const createTestDb = async () => {
 	for (const file of readdirSync('drizzle')
 		.filter((f) => f.endsWith('.sql'))
 		.sort()) {
-		const statements = readFileSync(`drizzle/${file}`, 'utf8').split('--> statement-breakpoint');
+		const statements = readFileSync(`drizzle/${file}`, 'utf8')
+			.replace(/^-- .*$/gm, '') // 行內註解會被下面的換行合併吃掉整句
+			.split('--> statement-breakpoint');
 		for (const sql of statements)
 			if (sql.trim()) await proxy.env.DB.exec(sql.replaceAll('\n', ' '));
 	}

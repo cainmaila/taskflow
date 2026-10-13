@@ -36,6 +36,13 @@
       "when": 1791903574905,
       "tag": "0004_bent_scalphunter",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1791908323336,
+      "tag": "0005_task_parent_no_root",
+      "breakpoints": true
     }
   ]
 }
