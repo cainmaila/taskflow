@@ -6,7 +6,7 @@ import { createAuth } from '#lib/server/auth.ts';
 declare global {
 	namespace App {
 		interface Locals {
-			user?: User;
+			user?: User & { role?: string | null };
 			session?: Session;
 			auth: ReturnType<typeof createAuth>;
 		}
