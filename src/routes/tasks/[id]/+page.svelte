@@ -167,7 +167,7 @@
 		<Card.Root>
 			<Card.Content class="divide-y">
 				{#each data.children as c (c.id)}
-					<TaskRow t={c} today={data.today} nested />
+					<TaskRow t={c} today={data.today} nested parentId={data.task.id} meId={data.user?.id} />
 				{:else}
 					<p class="py-3 text-sm text-muted-foreground">還沒有子任務。</p>
 				{/each}
@@ -187,7 +187,7 @@
 		<AttachPicker taskId={data.task.id} />
 	</section>
 
-	{#if data.deletePlan}
-		<DeleteTask plan={data.deletePlan} />
+	{#if data.canDelete}
+		<DeleteTask taskId={data.task.id} />
 	{/if}
 </main>

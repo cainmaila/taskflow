@@ -11,7 +11,7 @@ import {
 	getTask,
 	listChildren,
 	listParents,
-	planDelete,
+	TaskConflictError,
 	TaskError,
 	TaskForbiddenError,
 	TaskNotFoundError,
@@ -31,8 +31,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			parents: await listParents(db, me.id, params.id),
 			children: await listChildren(db, me.id, params.id),
 			today: todayISO(),
-			// 只有建立者能刪除；沒有子任務時 planDelete 只回 childCount: 0
-			deletePlan: canChangeAssignee ? await planDelete(db, me.id, params.id) : null,
+			canDelete: canChangeAssignee,
 			canChangeAssignee,
 			// 指派選單：未停用成員；目前的指派人即使已停用也保留在清單中以免被誤清掉
 			members: canChangeAssignee
@@ -48,6 +47,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 };
 
 const failure = (e: unknown) => {
+	if (e instanceof TaskConflictError) return fail(409, { message: e.message, plan: e.plan });
 	if (e instanceof TaskNotFoundError) error(404, '找不到任務');
 	if (e instanceof TaskForbiddenError) return fail(403, { message: e.message });
 	if (e instanceof TaskError) return fail(400, { message: e.message });
@@ -120,7 +120,9 @@ export const actions: Actions = {
 				getDb(env.DB),
 				me.id,
 				params.id,
-				form.get('mode')?.toString() === 'tree' ? 'tree' : 'single'
+				form.get('mode')?.toString() === 'tree' ? 'tree' : 'single',
+				// 缺少確認內容一律視為不一致
+				form.get('expect')?.toString() ?? ''
 			);
 		} catch (e) {
 			return failure(e);

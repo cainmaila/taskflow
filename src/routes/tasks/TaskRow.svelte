@@ -9,10 +9,14 @@
 		parentCount: number;
 		source?: 'own' | 'assigned';
 		assigneeName?: string;
+		createdBy?: string;
+		assigneeId?: string | null;
 	};
 </script>
 
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { Badge } from '#lib/components/ui/badge/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -20,7 +24,22 @@
 	import TaskRow from './TaskRow.svelte';
 
 	// nested：在某個 parent 底下展開時，parentCount 要扣掉目前這個 parent（D21）
-	let { t, today, nested = false }: { t: Row; today: string; nested?: boolean } = $props();
+	// parentId：這一列是在哪個 parent 底下顯示（用於「移除」）；meId 用來判斷是否有操作權（建立者或指派人）
+	let {
+		t,
+		today,
+		nested = false,
+		parentId,
+		meId,
+		onchange
+	}: {
+		t: Row;
+		today: string;
+		nested?: boolean;
+		parentId?: string;
+		meId?: string;
+		onchange?: () => void;
+	} = $props();
 
 	let expanded = $state(false);
 	let loading = $state(false);
@@ -30,9 +49,7 @@
 	const overdue = $derived(t.status !== 'done' && !!t.dueDate && t.dueDate < today);
 	const otherParents = $derived(nested ? t.parentCount - 1 : t.parentCount);
 
-	const toggle = async () => {
-		expanded = !expanded;
-		if (!expanded || children || loading) return;
+	const load = async () => {
 		loading = true;
 		error = '';
 		try {
@@ -45,6 +62,44 @@
 		} finally {
 			loading = false;
 		}
+	};
+	const toggle = async () => {
+		expanded = !expanded;
+		if (expanded && !children && !loading) await load();
+	};
+
+	// 子任務數字變了（掛上、移除、刪除後頁面重新載入），快取的子任務就過期了
+	$effect(() => {
+		void `${t.childCount}/${t.doneChildCount}`;
+		untrack(() => {
+			if (!children) return;
+			children = null;
+			if (expanded) load();
+		});
+	});
+
+	const canDetach = $derived(
+		!!parentId && !!meId && (t.createdBy === meId || t.assigneeId === meId)
+	);
+	let detachError = $state('');
+	const detach = async () => {
+		if (!parentId || !confirm(`確定要把「${t.title}」從上層任務移除嗎？任務本身不會被刪除。`))
+			return;
+		detachError = '';
+		const body = new FormData();
+		body.set('parentId', parentId);
+		const res = await fetch(`/tasks/${t.id}?/detach`, {
+			method: 'POST',
+			headers: { 'x-sveltekit-action': 'true' },
+			body
+		});
+		const out = (await res.json().catch(() => null)) as { type?: string } | null;
+		if (out?.type !== 'success') {
+			detachError = '移除失敗，請重新整理後再試';
+			return;
+		}
+		onchange?.();
+		await invalidateAll();
 	};
 </script>
 
@@ -80,12 +135,16 @@
 				{t.dueDate}{overdue ? '（逾期）' : ''}
 			</span>
 		</span>
+		{#if canDetach}
+			<Button type="button" size="sm" variant="outline" onclick={detach}>移除</Button>
+		{/if}
 	</div>
+	{#if detachError}<p class="pl-8 text-sm text-destructive" role="alert">{detachError}</p>{/if}
 	{#if error}<p class="pl-8 text-sm text-destructive" role="alert">{error}</p>{/if}
 	{#if expanded && children}
 		<div class="ml-4 divide-y border-l pl-4">
 			{#each children as c (c.id)}
-				<TaskRow t={c} {today} nested />
+				<TaskRow t={c} {today} nested parentId={t.id} {meId} onchange={load} />
 			{/each}
 		</div>
 	{/if}

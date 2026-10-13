@@ -15,15 +15,19 @@
 	let scope = $state<{ id: string; name: string }[]>([]);
 	let open = $state(false);
 	let timer: ReturnType<typeof setTimeout>;
+	let seq = 0;
+	let submitting = $state(false);
 
 	const search = async () => {
 		error = '';
+		const mine = ++seq; // 只採用最後一次搜尋的結果
 		try {
 			const res = await fetch(`/tasks/${taskId}/attachable?q=${encodeURIComponent(q)}`);
 			if (!res.ok) throw new Error();
-			results = await res.json();
+			const data = (await res.json()) as Candidate[];
+			if (mine === seq) results = data;
 		} catch {
-			error = '搜尋失敗，請再試一次';
+			if (mine === seq) error = '搜尋失敗，請再試一次';
 		}
 	};
 	const onInput = () => {
@@ -87,16 +91,20 @@
 			<form
 				method="post"
 				action="?/attach"
-				use:enhance={() =>
-					async ({ update }) => {
+				use:enhance={() => {
+					submitting = true;
+					return async ({ update }) => {
 						open = false;
 						results = null;
 						q = '';
+						seq++;
 						await update();
-					}}
+						submitting = false;
+					};
+				}}
 			>
 				<input type="hidden" name="childId" value={chosen?.id ?? ''} />
-				<Button type="submit">確認掛上</Button>
+				<Button type="submit" disabled={submitting}>確認掛上</Button>
 			</form>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

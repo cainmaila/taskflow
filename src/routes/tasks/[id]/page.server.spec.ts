@@ -88,9 +88,14 @@ describe('task detail routes', () => {
 		expect(await actions.detach!(ev('u1', { parentId: 'nope' }, other))).toMatchObject({
 			status: 400
 		});
-		// delete: assignee 403, creator tree delete redirects
+		// delete: assignee 403; missing/stale confirmation -> 409 with fresh plan and nothing deleted
 		expect(await actions.delete!(ev('u2', { mode: 'tree' }))).toMatchObject({ status: 403 });
-		expect(await run(actions.delete!(ev('u1', { mode: 'tree' })))).toMatchObject({
+		const stale = await actions.delete!(ev('u1', { mode: 'tree', expect: 'tree:1:0:0:0' }));
+		expect(stale).toMatchObject({ status: 409, data: { plan: { childCount: 1 } } });
+		expect(await t.db.select().from(task).all()).toHaveLength(2);
+		expect(
+			await run(actions.delete!(ev('u1', { mode: 'tree', expect: 'tree:2:0:0:0' })))
+		).toMatchObject({
 			status: 303,
 			location: '/tasks'
 		});

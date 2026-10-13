@@ -18,7 +18,7 @@
 	<Card.Root>
 		<Card.Content class="divide-y">
 			{#each data.active as t (t.id)}
-				<TaskRow {t} today={data.today} />
+				<TaskRow {t} today={data.today} meId={data.user?.id} />
 			{:else}
 				<p class="py-3 text-sm text-muted-foreground">沒有符合條件的任務。</p>
 			{/each}
@@ -30,7 +30,7 @@
 			<summary class="cursor-pointer p-3 font-medium">已完成（{data.done.length}）</summary>
 			<div class="divide-y px-6">
 				{#each data.done as t (t.id)}
-					<TaskRow {t} today={data.today} />
+					<TaskRow {t} today={data.today} meId={data.user?.id} />
 				{/each}
 			</div>
 		</details>
