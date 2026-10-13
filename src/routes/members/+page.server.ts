@@ -2,7 +2,12 @@ import { fail, redirect } from '@sveltejs/kit';
 import { env } from 'cloudflare:workers';
 import { APIError } from 'better-auth/api';
 import { getDb } from '#lib/server/db/index.ts';
-import { createInvitation, InvitationError } from '#lib/server/invitations.ts';
+import {
+	createInvitation,
+	InvitationError,
+	listPendingInvitations,
+	revokeInvitation
+} from '#lib/server/invitations.ts';
 import { changeRole, listMembers, MemberError, setBanned } from '#lib/server/members.ts';
 import { canInvite, canManageMembers, parseRole } from '#lib/server/permissions.ts';
 import type { Actions, PageServerLoad } from './$types';
@@ -14,7 +19,8 @@ export const load: PageServerLoad = async ({ locals }) => {
 		me: { id: me.id, role: me.role ?? 'member' },
 		canInvite: canInvite(me.role),
 		canManage: canManageMembers(me.role),
-		members: await listMembers(getDb(env.DB))
+		members: await listMembers(getDb(env.DB)),
+		pendingInvitations: canInvite(me.role) ? await listPendingInvitations(getDb(env.DB)) : []
 	};
 };
 
@@ -39,6 +45,16 @@ export const actions: Actions = {
 				invitedBy: me.id
 			});
 			return { inviteLink: `${url.origin}/invite/${token}` };
+		} catch (e) {
+			return fail(400, { message: message(e) });
+		}
+	},
+	revoke: async ({ request, locals }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await revokeInvitation(getDb(env.DB), me, form.get('id')?.toString() ?? '');
 		} catch (e) {
 			return fail(400, { message: message(e) });
 		}

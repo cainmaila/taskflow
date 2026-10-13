@@ -72,6 +72,33 @@
 		</Card.Root>
 	{/if}
 
+	{#if data.canInvite}
+		<Card.Root>
+			<Card.Header><Card.Title>待使用的邀請</Card.Title></Card.Header>
+			<Card.Content class="divide-y">
+				{#each data.pendingInvitations as inv (inv.id)}
+					<div class="flex flex-wrap items-center gap-3 py-3">
+						<div class="min-w-48 flex-1">
+							<div class="font-medium">{inv.email}</div>
+							<div class="text-sm text-muted-foreground">
+								邀請人 {inv.inviterName}・{new Date(inv.expiresAt).toLocaleDateString('zh-TW')} 到期
+							</div>
+						</div>
+						<Badge variant="secondary">{roleLabel[inv.role] ?? inv.role}</Badge>
+						{#if inv.invitedBy === data.me.id || data.canManage}
+							<form method="post" action="?/revoke" use:enhance>
+								<input type="hidden" name="id" value={inv.id} />
+								<Button type="submit" variant="outline" size="sm">撤銷</Button>
+							</form>
+						{/if}
+					</div>
+				{:else}
+					<p class="py-3 text-sm text-muted-foreground">目前沒有待使用的邀請。</p>
+				{/each}
+			</Card.Content>
+		</Card.Root>
+	{/if}
+
 	<Card.Root>
 		<Card.Content class="divide-y">
 			{#each data.members as m (m.id)}

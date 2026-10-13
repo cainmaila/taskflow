@@ -31,9 +31,9 @@ export const hashToken = async (token: string) => {
 };
 
 export const isInvitationUsable = (
-	inv: { usedAt: Date | null; expiresAt: Date },
+	inv: { usedAt: Date | null; revokedAt?: Date | null; expiresAt: Date },
 	now = new Date()
-) => inv.usedAt === null && inv.expiresAt.getTime() > now.getTime();
+) => inv.usedAt === null && !inv.revokedAt && inv.expiresAt.getTime() > now.getTime();
 
 export const validateAccept = (input: { name: string; password: string }) => {
 	if (!input.name.trim()) throw new InvitationError('請輸入姓名');
@@ -85,7 +85,9 @@ export const acceptInvitation = async (
 	validateAccept(input);
 	const tokenHash = await hashToken(input.token);
 
-	const pending = await findUsableInvitation(db, input.token, now);
+	const found = await db.select().from(invitation).where(eq(invitation.tokenHash, tokenHash)).get();
+	if (found?.revokedAt) throw new InvitationError('邀請已失效');
+	const pending = found && isInvitationUsable(found, now) ? found : null;
 	if (!pending) throw new InvitationError('邀請連結無效或已過期');
 	if (await emailTaken(db, pending.email)) throw new InvitationError('此 Email 已註冊');
 
@@ -102,6 +104,7 @@ export const acceptInvitation = async (
 			and(
 				eq(invitation.tokenHash, tokenHash),
 				isNull(invitation.usedAt),
+				isNull(invitation.revokedAt),
 				gt(invitation.expiresAt, now)
 			)
 		)
@@ -128,4 +131,46 @@ export const acceptInvitation = async (
 		throw e;
 	}
 	return { email: consumed.email };
+};
+
+/** D39：待使用（未用、未撤銷、未過期）的邀請；不含 token 與雜湊 */
+export const listPendingInvitations = (db: Db, now = new Date()) =>
+	db
+		.select({
+			id: invitation.id,
+			email: invitation.email,
+			role: invitation.role,
+			invitedBy: invitation.invitedBy,
+			inviterName: user.name,
+			expiresAt: invitation.expiresAt
+		})
+		.from(invitation)
+		.innerJoin(user, eq(user.id, invitation.invitedBy))
+		.where(
+			and(isNull(invitation.usedAt), isNull(invitation.revokedAt), gt(invitation.expiresAt, now))
+		)
+		.orderBy(invitation.createdAt)
+		.all();
+
+/** D39：邀請人本人或系統管理員可撤銷；與接受以同一條件式 UPDATE 互斥 */
+export const revokeInvitation = async (
+	db: Db,
+	actor: { id: string; role?: string | null },
+	invitationId: string,
+	now = new Date()
+) => {
+	if (!canInvite(actor.role)) throw new InvitationError('沒有權限');
+	const inv = await db.select().from(invitation).where(eq(invitation.id, invitationId)).get();
+	if (!inv) throw new InvitationError('找不到邀請');
+	if (inv.invitedBy !== actor.id && actor.role !== 'system_admin')
+		throw new InvitationError('沒有權限');
+
+	const [revoked] = await db
+		.update(invitation)
+		.set({ revokedAt: now })
+		.where(
+			and(eq(invitation.id, invitationId), isNull(invitation.usedAt), isNull(invitation.revokedAt))
+		)
+		.returning({ id: invitation.id });
+	if (!revoked) throw new InvitationError('邀請已被使用或撤銷');
 };

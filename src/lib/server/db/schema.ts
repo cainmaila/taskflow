@@ -24,6 +24,7 @@ export const invitation = sqliteTable('invitation', {
 		.references(() => user.id),
 	expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
 	usedAt: integer('used_at', { mode: 'timestamp_ms' }),
+	revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
 	createdAt: integer('created_at', { mode: 'timestamp_ms' })
 		.notNull()
 		.$defaultFn(() => new Date())

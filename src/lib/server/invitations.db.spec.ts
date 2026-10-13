@@ -6,7 +6,9 @@ import {
 	createInvitation,
 	hashToken,
 	INVITATION_TTL_MS,
-	InvitationError
+	InvitationError,
+	listPendingInvitations,
+	revokeInvitation
 } from './invitations';
 import { createTestDb } from './test-db';
 
@@ -163,5 +165,80 @@ describe('acceptInvitation', () => {
 		await expect(acceptInvitation(t.db, { api }, input(late))).rejects.toThrow('已註冊');
 		expect((await row(late))?.usedAt).toBeNull();
 		expect(createUser).not.toHaveBeenCalled();
+	});
+});
+
+describe('revokeInvitation (D39)', () => {
+	const admin = { id: 'admin', role: 'system_admin' };
+	const invite = () =>
+		createInvitation(t.db, { email: 'bob@x.io', role: 'member', invitedBy: 'mgr' });
+	const input = (token: string) => ({ token, name: 'Bob', password: 'password123' });
+	const idOf = async (token: string) => (await row(token))!.id;
+
+	beforeEach(async () => {
+		await t.db.insert(user).values({ id: 'mgr', name: 'M', email: 'mgr@x.io', role: 'manager' });
+		await t.db.insert(user).values({ id: 'mgr2', name: 'M2', email: 'mgr2@x.io', role: 'manager' });
+	});
+
+	it('inviter and system_admin can revoke; other manager and member cannot', async () => {
+		const token = await invite();
+		const id = await idOf(token);
+		await expect(revokeInvitation(t.db, { id: 'mgr2', role: 'manager' }, id)).rejects.toThrow(
+			'沒有權限'
+		);
+		await expect(revokeInvitation(t.db, { id: 'x', role: 'member' }, id)).rejects.toThrow(
+			'沒有權限'
+		);
+		expect((await row(token))?.revokedAt).toBeNull();
+		await revokeInvitation(t.db, { id: 'mgr', role: 'manager' }, id);
+		expect((await row(token))?.revokedAt).toBeInstanceOf(Date);
+
+		const token2 = await invite();
+		await revokeInvitation(t.db, admin, await idOf(token2));
+		expect((await row(token2))?.revokedAt).toBeInstanceOf(Date);
+	});
+
+	it('revoked link cannot be accepted, and used_at stays null', async () => {
+		const token = await invite();
+		await revokeInvitation(t.db, admin, await idOf(token));
+		const createUser = vi.fn();
+		await expect(acceptInvitation(t.db, { api: { createUser } }, input(token))).rejects.toThrow(
+			'邀請已失效'
+		);
+		expect(createUser).not.toHaveBeenCalled();
+		expect((await row(token))?.usedAt).toBeNull();
+	});
+
+	it('used invitation cannot be revoked; revoking twice fails', async () => {
+		const used = await invite();
+		const createUser = vi.fn(async () => {});
+		await acceptInvitation(t.db, { api: { createUser } }, input(used));
+		await expect(revokeInvitation(t.db, admin, await idOf(used))).rejects.toThrow('已被使用');
+		expect((await row(used))?.revokedAt).toBeNull();
+
+		await t.db.delete(invitation);
+		const token = await invite();
+		const id = await idOf(token);
+		await revokeInvitation(t.db, admin, id);
+		await expect(revokeInvitation(t.db, admin, id)).rejects.toThrow('已被使用或撤銷');
+	});
+
+	it('pending list excludes used, revoked, expired and exposes no token data', async () => {
+		const pending = await invite();
+		const revoked = await createInvitation(t.db, {
+			email: 'r@x.io',
+			role: 'member',
+			invitedBy: 'mgr'
+		});
+		await revokeInvitation(t.db, admin, await idOf(revoked));
+		await createInvitation(
+			t.db,
+			{ email: 'old@x.io', role: 'member', invitedBy: 'mgr' },
+			new Date(Date.now() - INVITATION_TTL_MS - 1000)
+		);
+		const list = await listPendingInvitations(t.db);
+		expect(list.map((i) => i.email)).toEqual(['bob@x.io']);
+		expect(list[0]).toMatchObject({ inviterName: 'M', id: await idOf(pending) });
+		expect(JSON.stringify(list)).not.toMatch(/token/i);
 	});
 });
