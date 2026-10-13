@@ -51,7 +51,7 @@ export const actions: Actions = {
 		try {
 			await changeRole(
 				getDb(env.DB),
-				locals.auth,
+				locals.auth.api,
 				request.headers,
 				locals.user.role,
 				form.get('userId')?.toString() ?? '',
@@ -67,7 +67,7 @@ export const actions: Actions = {
 		try {
 			await setBanned(
 				getDb(env.DB),
-				locals.auth,
+				locals.auth.api,
 				request.headers,
 				locals.user.role,
 				form.get('userId')?.toString() ?? '',

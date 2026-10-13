@@ -2,10 +2,13 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { invitation, user } from './db/schema';
 import { INVITABLE_ROLES } from './permissions';
-import type { createAuth } from './auth';
 
 type Db = ReturnType<typeof getDb>;
-type Auth = ReturnType<typeof createAuth>;
+type UserCreator = {
+	createUser(o: {
+		body: { email: string; password: string; name: string; role: InvitableRole };
+	}): Promise<unknown>;
+};
 type InvitableRole = (typeof INVITABLE_ROLES)[number];
 
 export const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -75,7 +78,7 @@ export const findUsableInvitation = async (db: Db, token: string, now = new Date
 
 export const acceptInvitation = async (
 	db: Db,
-	auth: Auth,
+	auth: { api: UserCreator },
 	input: { token: string; name: string; password: string },
 	now = new Date()
 ) => {
@@ -110,7 +113,13 @@ export const acceptInvitation = async (
 			}
 		});
 	} catch (e) {
-		await db.update(invitation).set({ usedAt: null }).where(eq(invitation.id, consumed.id));
+		// D1 沒有交易：消耗邀請與建立使用者不是原子的。還原失敗時只記錄，不遮蔽原始錯誤；
+		// 另外 createUser 若在寫入後才失敗，可能留下孤兒使用者（email 已被佔用，需人工處理）。
+		try {
+			await db.update(invitation).set({ usedAt: null }).where(eq(invitation.id, consumed.id));
+		} catch (revertError) {
+			console.error('failed to revert invitation used_at', consumed.id, revertError);
+		}
 		throw e;
 	}
 	return { email: consumed.email };

@@ -33,7 +33,13 @@ export const actions: Actions = {
 				return fail(400, { message: e.message, name });
 			throw e;
 		}
-		await locals.auth.api.signInEmail({ body: { email, password } });
+		try {
+			await locals.auth.api.signInEmail({ body: { email, password } });
+		} catch (e) {
+			// 帳號已建立，自動登入失敗時請使用者手動登入
+			if (e instanceof APIError) redirect(302, '/login');
+			throw e;
+		}
 		redirect(302, '/members');
 	}
 };

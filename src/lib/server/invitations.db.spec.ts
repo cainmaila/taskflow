@@ -1,0 +1,140 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { eq } from 'drizzle-orm';
+import { invitation, user } from './db/schema';
+import {
+	acceptInvitation,
+	createInvitation,
+	hashToken,
+	INVITATION_TTL_MS,
+	InvitationError
+} from './invitations';
+import { createTestDb } from './test-db';
+
+let t: Awaited<ReturnType<typeof createTestDb>>;
+beforeAll(async () => (t = await createTestDb()));
+afterAll(() => t.dispose());
+
+beforeEach(async () => {
+	await t.db.delete(invitation);
+	await t.db.delete(user);
+	await t.db.insert(user).values({ id: 'admin', name: 'Admin', email: 'admin@x.io' });
+});
+
+const row = async (token: string) =>
+	t.db
+		.select()
+		.from(invitation)
+		.where(eq(invitation.tokenHash, await hashToken(token)))
+		.get();
+
+const okApi = () => {
+	const createUser = vi.fn(async ({ body }: { body: { email: string; name: string } }) => {
+		await t.db.insert(user).values({ id: crypto.randomUUID(), name: body.name, email: body.email });
+	});
+	return { api: { createUser }, createUser };
+};
+
+describe('createInvitation', () => {
+	it('stores only the hash, lowercases email, expires in 7 days', async () => {
+		const now = new Date('2026-01-01T00:00:00Z');
+		const token = await createInvitation(
+			t.db,
+			{ email: ' New@X.io ', role: 'manager', invitedBy: 'admin' },
+			now
+		);
+		const inv = await row(token);
+		expect(inv).toMatchObject({ email: 'new@x.io', role: 'manager', usedAt: null });
+		expect(inv?.tokenHash).not.toBe(token);
+		expect(inv?.expiresAt.getTime()).toBe(now.getTime() + INVITATION_TTL_MS);
+	});
+
+	it('rejects already-registered emails and bad roles', async () => {
+		await expect(
+			createInvitation(t.db, { email: 'ADMIN@x.io', role: 'member', invitedBy: 'admin' })
+		).rejects.toThrow('已註冊');
+		await expect(
+			createInvitation(t.db, {
+				email: 'a@x.io',
+				role: 'system_admin' as 'member',
+				invitedBy: 'admin'
+			})
+		).rejects.toThrow(InvitationError);
+		await expect(
+			createInvitation(t.db, { email: 'not-an-email', role: 'member', invitedBy: 'admin' })
+		).rejects.toThrow(InvitationError);
+	});
+});
+
+describe('acceptInvitation', () => {
+	const input = (token: string) => ({ token, name: 'Bob', password: 'password123' });
+	const invite = (email = 'bob@x.io') =>
+		createInvitation(t.db, { email, role: 'member', invitedBy: 'admin' });
+
+	it('creates the user with the invited role and consumes the invitation', async () => {
+		const token = await invite();
+		const { api, createUser } = okApi();
+		await acceptInvitation(t.db, { api }, input(token));
+		expect(createUser).toHaveBeenCalledWith({
+			body: { email: 'bob@x.io', password: 'password123', name: 'Bob', role: 'member' }
+		});
+		expect((await row(token))?.usedAt).toBeInstanceOf(Date);
+	});
+
+	it('second accept of the same token fails without creating another user', async () => {
+		const token = await invite();
+		const { api, createUser } = okApi();
+		await acceptInvitation(t.db, { api }, input(token));
+		await expect(acceptInvitation(t.db, { api }, input(token))).rejects.toThrow(InvitationError);
+		expect(createUser).toHaveBeenCalledTimes(1);
+	});
+
+	it('concurrent accepts: only one wins', async () => {
+		const token = await invite();
+		const { api, createUser } = okApi();
+		const results = await Promise.allSettled([
+			acceptInvitation(t.db, { api }, input(token)),
+			acceptInvitation(t.db, { api }, input(token))
+		]);
+		expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+		expect(createUser).toHaveBeenCalledTimes(1);
+	});
+
+	it('rejects expired invitations and unknown tokens', async () => {
+		const token = await invite();
+		const { api, createUser } = okApi();
+		const later = new Date(Date.now() + INVITATION_TTL_MS + 1000);
+		await expect(acceptInvitation(t.db, { api }, input(token), later)).rejects.toThrow(
+			'無效或已過期'
+		);
+		await expect(acceptInvitation(t.db, { api }, input('nope'))).rejects.toThrow('無效或已過期');
+		expect(createUser).not.toHaveBeenCalled();
+	});
+
+	it('does not consume the invitation on invalid input', async () => {
+		const token = await invite();
+		const { api } = okApi();
+		await expect(
+			acceptInvitation(t.db, { api }, { token, name: 'Bob', password: 'short' })
+		).rejects.toThrow(InvitationError);
+		expect((await row(token))?.usedAt).toBeNull();
+	});
+
+	it('rolls back used_at when createUser fails and rethrows the original error', async () => {
+		const token = await invite();
+		const boom = new Error('createUser failed');
+		const api = { createUser: vi.fn().mockRejectedValue(boom) };
+		await expect(acceptInvitation(t.db, { api }, input(token))).rejects.toBe(boom);
+		expect((await row(token))?.usedAt).toBeNull();
+	});
+
+	it('rejects when the email got registered after the invitation was made', async () => {
+		const token = await invite('admin@x.io').catch(() => null);
+		expect(token).toBeNull(); // 建立時就擋掉
+		const late = await invite('late@x.io');
+		await t.db.insert(user).values({ id: 'late', name: 'L', email: 'late@x.io' });
+		const { api, createUser } = okApi();
+		await expect(acceptInvitation(t.db, { api }, input(late))).rejects.toThrow('已註冊');
+		expect((await row(late))?.usedAt).toBeNull();
+		expect(createUser).not.toHaveBeenCalled();
+	});
+});
