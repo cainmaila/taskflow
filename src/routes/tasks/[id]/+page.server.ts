@@ -27,7 +27,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			members: canChangeAssignee
 				? (await listMembers(db))
 						.filter((m) => !m.banned || m.id === task.assigneeId)
-						.map((m) => ({ id: m.id, name: m.name }))
+						.map((m) => ({ id: m.id, name: m.banned ? `${m.name}（已停用）` : m.name }))
 				: []
 		};
 	} catch (e) {

@@ -162,6 +162,9 @@ describe('permissions', () => {
 		await expect(updateTask(t.db, 'u1', id, { startDate: '2026-11-01' })).rejects.toThrow('晚於');
 		await expect(updateTask(t.db, 'u1', id, { dueDate: '' })).rejects.toThrow(TaskError);
 		await expect(updateTask(t.db, 'u1', id, { status: 'nope' })).rejects.toThrow(TaskError);
+		await expect(updateTask(t.db, 'u1', id, { description: 'x'.repeat(20001) })).rejects.toThrow(
+			'20000'
+		);
 		await updateTask(t.db, 'u1', id, { startDate: '2026-10-01' });
 		expect((await getTask(t.db, 'u1', id)).startDate).toBe('2026-10-01');
 	});

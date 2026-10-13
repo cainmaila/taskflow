@@ -64,6 +64,7 @@
 					<Textarea
 						id="description"
 						name="description"
+						maxlength={20000}
 						rows={8}
 						bind:value={description}
 						class={preview ? 'hidden' : ''}

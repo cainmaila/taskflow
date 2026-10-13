@@ -13,4 +13,12 @@ describe('renderMarkdown', () => {
 		expect(out).not.toMatch(/onerror|onclick/i);
 		expect(out).not.toMatch(/javascript:/i);
 	});
+	it('drops images and target attributes', () => {
+		const out = renderMarkdown(
+			'![x](https://evil.test/p.png)\n\n<a href="https://a.test" target="_blank">k</a>'
+		);
+		expect(out).not.toMatch(/<img/i);
+		expect(out).not.toMatch(/target=/i);
+		expect(out).toContain('href="https://a.test"');
+	});
 });

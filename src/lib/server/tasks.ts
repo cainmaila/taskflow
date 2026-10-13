@@ -7,6 +7,7 @@ import {
 	canDelete,
 	canEdit,
 	canView,
+	DESC_MAX,
 	isStatus,
 	TaskError,
 	TaskForbiddenError,
@@ -106,6 +107,7 @@ export const updateTask = async (db: Db, userId: string, id: string, patch: Task
 	if (patch.title !== undefined) set.title = validateTitle(patch.title);
 	if (patch.description !== undefined) {
 		if (typeof patch.description !== 'string') throw new TaskError('描述格式不正確');
+		if (patch.description.length > DESC_MAX) throw new TaskError(`描述最多 ${DESC_MAX} 字`);
 		set.description = patch.description;
 	}
 	if (patch.status !== undefined) {

@@ -40,6 +40,11 @@ export default defineConfig({
 				extends: './vite.config.ts',
 				test: {
 					name: 'server',
+					// 路由的 server 檔 import 了 adapter 提供的虛擬模組，測試改用 stub
+					alias: {
+						'cloudflare:workers': new URL('./src/lib/server/cf-workers.stub.ts', import.meta.url)
+							.pathname
+					},
 					environment: 'node',
 					include: ['src/**/*.{test,spec}.{js,ts}'],
 					exclude: ['src/**/*.svelte.{test,spec}.{js,ts}']

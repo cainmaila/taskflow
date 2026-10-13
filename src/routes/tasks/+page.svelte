@@ -101,14 +101,16 @@
 				{@render taskRow(t)}
 			{:else}
 				<p class="py-3 text-sm text-muted-foreground">
-					沒有符合條件的未完成任務。用上方的列新增一個吧。
+					{data.filters.statuses.length && data.filters.statuses.every((x) => x === 'done')
+						? '沒有符合條件的任務。'
+						: '沒有符合條件的未完成任務。用上方的列新增一個吧。'}
 				</p>
 			{/each}
 		</Card.Content>
 	</Card.Root>
 
 	{#if data.done.length}
-		<details class="rounded-lg border">
+		<details open={data.filters.statuses.includes('done')} class="rounded-lg border">
 			<summary class="cursor-pointer p-3 font-medium">已完成（{data.done.length}）</summary>
 			<div class="divide-y px-6">
 				{#each data.done as t (t.id)}

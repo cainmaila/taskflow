@@ -2,6 +2,7 @@
 import { TASK_STATUSES, type TaskStatus } from './db/schema';
 
 export const TITLE_MAX = 200;
+export const DESC_MAX = 20000;
 
 export class TaskError extends Error {}
 export class TaskForbiddenError extends TaskError {}
