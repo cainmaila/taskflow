@@ -220,3 +220,10 @@
 - 個人根只是「我的任務」的容器，不是真正的任務：無到期日、不顯示在清單、不上甘特圖。
 - 其餘所有任務（含個人根底下的個人任務）`due_date` 必填。
 - 資料庫層以 CHECK 保證：`root_owner_id IS NOT NULL OR due_date IS NOT NULL`。
+
+## D35：UI 套件採用 shadcn-svelte
+
+- 使用 shadcn-svelte（bits-ui + Tailwind 4），元件原始碼放在 `src/lib/components/ui/`，不自己手刻基礎元件。
+- 路徑別名沿用專案的 `#lib`（`components.json` 已設定）。
+- 需要新元件時用 `pnpm dlx shadcn-svelte@latest add <name>`。
+- 已安裝：button、input、label、card、alert。
