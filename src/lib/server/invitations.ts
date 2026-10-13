@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, ne } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { invitation, user } from './db/schema';
 import { canInvite, INVITABLE_ROLES } from './permissions';
@@ -56,13 +56,28 @@ export const createInvitation = async (
 	if (await emailTaken(db, email)) throw new InvitationError('此 Email 已註冊');
 
 	const token = generateToken();
-	await db.insert(invitation).values({
-		email,
-		role: input.role,
-		invitedBy: input.invitedBy,
-		tokenHash: await hashToken(token),
-		expiresAt: new Date(now.getTime() + INVITATION_TTL_MS)
-	});
+	const [created] = await db
+		.insert(invitation)
+		.values({
+			email,
+			role: input.role,
+			invitedBy: input.invitedBy,
+			tokenHash: await hashToken(token),
+			expiresAt: new Date(now.getTime() + INVITATION_TTL_MS)
+		})
+		.returning({ id: invitation.id });
+	// D40：先插入新邀請，再作廢同 email 其他未用邀請（email 已在入口正規化為小寫）
+	await db
+		.update(invitation)
+		.set({ revokedAt: now })
+		.where(
+			and(
+				eq(invitation.email, email),
+				ne(invitation.id, created.id),
+				isNull(invitation.usedAt),
+				isNull(invitation.revokedAt)
+			)
+		);
 	return token;
 };
 

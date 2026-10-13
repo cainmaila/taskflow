@@ -168,6 +168,37 @@ describe('acceptInvitation', () => {
 	});
 });
 
+describe('re-inviting (D40)', () => {
+	const invite = (email: string) =>
+		createInvitation(t.db, { email, role: 'member', invitedBy: 'admin' });
+
+	it('invalidates older links for the same email (case-insensitive); new one works', async () => {
+		const old = await invite('bob@x.io');
+		const fresh = await invite(' BOB@x.io ');
+		expect((await row(old))?.revokedAt).toBeInstanceOf(Date);
+		expect((await row(fresh))?.revokedAt).toBeNull();
+		const createUser = vi.fn(async () => {});
+		const api = { createUser };
+		await expect(
+			acceptInvitation(t.db, { api }, { token: old, name: 'B', password: 'password123' })
+		).rejects.toThrow('邀請已失效');
+		await acceptInvitation(t.db, { api }, { token: fresh, name: 'B', password: 'password123' });
+		expect(createUser).toHaveBeenCalledTimes(1);
+	});
+
+	it('leaves other emails and used invitations untouched', async () => {
+		const other = await invite('other@x.io');
+		const used = await invite('bob@x.io');
+		await t.db
+			.update(invitation)
+			.set({ usedAt: new Date() })
+			.where(eq(invitation.tokenHash, await hashToken(used)));
+		await invite('bob@x.io');
+		expect((await row(other))?.revokedAt).toBeNull();
+		expect((await row(used))?.revokedAt).toBeNull();
+	});
+});
+
 describe('revokeInvitation (D39)', () => {
 	const admin = { id: 'admin', role: 'system_admin' };
 	const invite = () =>
