@@ -83,7 +83,13 @@
 						</div>
 						<Badge variant="secondary">{roleLabel[inv.role] ?? inv.role}</Badge>
 						{#if inv.invitedBy === data.me.id || data.canManage}
-							<form method="post" action="?/revoke" use:enhance>
+							<form
+								method="post"
+								action="?/revoke"
+								use:enhance={({ cancel }) => {
+									if (!confirm(`確定要撤銷 ${inv.email} 的邀請嗎？連結會立即失效。`)) cancel();
+								}}
+							>
 								<input type="hidden" name="id" value={inv.id} />
 								<Button type="submit" variant="outline" size="sm">撤銷</Button>
 							</form>
@@ -106,7 +112,7 @@
 					</div>
 					<Badge variant="secondary">{roleLabel[m.role ?? 'member'] ?? m.role}</Badge>
 					{#if m.banned}<Badge variant="destructive">已停用</Badge>{/if}
-					{#if data.canManage}
+					{#if data.canManage && m.id !== data.me.id}
 						<form method="post" action="?/setRole" use:enhance class="flex gap-2">
 							<input type="hidden" name="userId" value={m.id} />
 							<NativeSelect.Root name="role" value={m.role ?? 'member'} aria-label="角色">

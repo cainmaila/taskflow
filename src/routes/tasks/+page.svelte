@@ -23,14 +23,16 @@
 		class="flex flex-wrap items-center gap-3 py-3 hover:bg-muted/50"
 	>
 		<span class="min-w-48 flex-1 font-medium">{t.title}</span>
-		<Badge variant="outline">{t.source === 'own' ? '自己建' : '被指派'}</Badge>
-		<Badge variant="secondary">{statusLabel[t.status]}</Badge>
-		<span
-			class="text-sm {t.status !== 'done' && t.dueDate && t.dueDate < data.today
-				? 'font-medium text-destructive'
-				: 'text-muted-foreground'}"
-		>
-			{t.dueDate}{t.status !== 'done' && t.dueDate && t.dueDate < data.today ? '（逾期）' : ''}
+		<span class="flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap">
+			<Badge variant="outline">{t.source === 'own' ? '自己建' : '被指派'}</Badge>
+			<Badge variant="secondary">{statusLabel[t.status]}</Badge>
+			<span
+				class="text-sm {t.status !== 'done' && t.dueDate && t.dueDate < data.today
+					? 'font-medium text-destructive'
+					: 'text-muted-foreground'}"
+			>
+				{t.dueDate}{t.status !== 'done' && t.dueDate && t.dueDate < data.today ? '（逾期）' : ''}
+			</span>
 		</span>
 	</a>
 {/snippet}

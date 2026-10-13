@@ -28,7 +28,10 @@
 		<a href={resolve('/tasks')} class="text-sm text-muted-foreground hover:text-foreground"
 			>← 我的任務</a
 		>
-		{#if !startDate}<Badge variant="outline">里程碑</Badge>{/if}
+		{#if !startDate}
+			<Badge variant="outline" title="只有到期日、沒有開始日的任務會以里程碑顯示">里程碑</Badge>
+			<span class="text-xs text-muted-foreground">只有到期日、沒有開始日的任務會以里程碑顯示</span>
+		{/if}
 	</div>
 
 	{#if form?.message}
