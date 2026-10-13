@@ -11,6 +11,9 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import { renderMarkdown } from '#lib/markdown.js';
 	import { statusLabel } from '../status';
+	import TaskRow from '../TaskRow.svelte';
+	import AttachPicker from './AttachPicker.svelte';
+	import DeleteTask from './DeleteTask.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -40,6 +43,8 @@
 		>
 	{:else if form?.saved}
 		<Alert.Root><Alert.Description>已儲存</Alert.Description></Alert.Root>
+	{:else if form?.added || form?.attached || form?.detached}
+		<Alert.Root><Alert.Description>已更新</Alert.Description></Alert.Root>
 	{/if}
 
 	<Card.Root>
@@ -126,15 +131,63 @@
 		</form>
 	</Card.Root>
 
-	{#if data.canChangeAssignee}
-		<form
-			method="post"
-			action="?/delete"
-			use:enhance={({ cancel }) => {
-				if (!confirm('確定要刪除這個任務嗎？此動作無法復原。')) cancel();
-			}}
-		>
-			<Button type="submit" variant="destructive">刪除任務</Button>
+	<section class="space-y-3">
+		<h2 class="text-lg font-semibold">Parent</h2>
+		{#if data.parents.visible.length || data.parents.hiddenCount}
+			<ul class="divide-y rounded-md border">
+				{#each data.parents.visible as p (p.id)}
+					<li class="flex items-center gap-2 p-2">
+						<a href={resolve('/tasks/[id]', { id: p.id })} class="flex-1 font-medium">{p.title}</a>
+						<form method="post" action="?/detach" use:enhance>
+							<input type="hidden" name="parentId" value={p.id} />
+							<Button type="submit" size="sm" variant="outline">移除</Button>
+						</form>
+					</li>
+				{/each}
+				{#if data.parents.hiddenCount}
+					<li class="p-2 text-sm text-muted-foreground">
+						另有 {data.parents.hiddenCount} 個你看不到的 parent
+					</li>
+				{/if}
+			</ul>
+		{:else}
+			<p class="text-sm text-muted-foreground">這是頂層任務，沒有 parent。</p>
+		{/if}
+	</section>
+
+	<section class="space-y-3">
+		<h2 class="text-lg font-semibold">
+			子任務
+			{#if data.children.length}
+				<span class="text-sm font-normal text-muted-foreground">
+					{data.children.filter((c) => c.status === 'done').length}/{data.children.length} 完成
+				</span>
+			{/if}
+		</h2>
+		<Card.Root>
+			<Card.Content class="divide-y">
+				{#each data.children as c (c.id)}
+					<TaskRow t={c} today={data.today} nested />
+				{:else}
+					<p class="py-3 text-sm text-muted-foreground">還沒有子任務。</p>
+				{/each}
+			</Card.Content>
+		</Card.Root>
+		<form method="post" action="?/addChild" use:enhance class="flex flex-wrap items-end gap-4">
+			<div class="min-w-48 flex-1 space-y-2">
+				<Label for="child-title">新增子任務</Label>
+				<Input id="child-title" name="title" required maxlength={200} />
+			</div>
+			<div class="space-y-2">
+				<Label for="child-due">到期日</Label>
+				<Input id="child-due" name="dueDate" type="date" required />
+			</div>
+			<Button type="submit">新增</Button>
 		</form>
+		<AttachPicker taskId={data.task.id} />
+	</section>
+
+	{#if data.deletePlan}
+		<DeleteTask plan={data.deletePlan} />
 	{/if}
 </main>

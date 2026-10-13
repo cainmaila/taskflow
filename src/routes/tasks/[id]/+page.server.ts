@@ -2,10 +2,16 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import { env } from 'cloudflare:workers';
 import { getDb } from '#lib/server/db/index.ts';
 import { listMembers } from '#lib/server/members.ts';
-import { canAssign } from '#lib/server/task-rules.ts';
+import { canAssign, todayISO } from '#lib/server/task-rules.ts';
 import {
+	attachChild,
+	createTask,
 	deleteTask,
+	detachChild,
 	getTask,
+	listChildren,
+	listParents,
+	planDelete,
 	TaskError,
 	TaskForbiddenError,
 	TaskNotFoundError,
@@ -22,6 +28,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		const canChangeAssignee = canAssign(task, { userId: me.id });
 		return {
 			task,
+			parents: await listParents(db, me.id, params.id),
+			children: await listChildren(db, me.id, params.id),
+			today: todayISO(),
+			// 只有建立者能刪除；沒有子任務時 planDelete 只回 childCount: 0
+			deletePlan: canChangeAssignee ? await planDelete(db, me.id, params.id) : null,
 			canChangeAssignee,
 			// 指派選單：未停用成員；目前的指派人即使已停用也保留在清單中以免被誤清掉
 			members: canChangeAssignee
@@ -64,11 +75,53 @@ export const actions: Actions = {
 		}
 		return { saved: true };
 	},
-	delete: async ({ locals, params }) => {
+	addChild: async ({ request, locals, params }) => {
 		const me = locals.user;
 		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		const title = form.get('title')?.toString() ?? '';
+		const dueDate = form.get('dueDate')?.toString() ?? '';
 		try {
-			await deleteTask(getDb(env.DB), me.id, params.id);
+			await createTask(getDb(env.DB), me.id, { title, dueDate, parentId: params.id });
+		} catch (e) {
+			return failure(e);
+		}
+		return { added: true };
+	},
+	attach: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await attachChild(getDb(env.DB), me.id, params.id, form.get('childId')?.toString() ?? '');
+		} catch (e) {
+			return failure(e);
+		}
+		return { attached: true };
+	},
+	// 移除「這個任務」與某個 parent 的關聯（D50：需對這個任務有操作權）
+	detach: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await detachChild(getDb(env.DB), me.id, form.get('parentId')?.toString() ?? '', params.id);
+		} catch (e) {
+			return failure(e);
+		}
+		return { detached: true };
+	},
+	delete: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await deleteTask(
+				getDb(env.DB),
+				me.id,
+				params.id,
+				form.get('mode')?.toString() === 'tree' ? 'tree' : 'single'
+			);
 		} catch (e) {
 			return failure(e);
 		}
