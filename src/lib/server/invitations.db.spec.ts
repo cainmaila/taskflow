@@ -6,6 +6,7 @@ import {
 	createInvitation,
 	hashToken,
 	INVITATION_TTL_MS,
+	ForbiddenError,
 	InvitationError,
 	listPendingInvitations,
 	revokeInvitation
@@ -215,10 +216,10 @@ describe('revokeInvitation (D39)', () => {
 		const token = await invite();
 		const id = await idOf(token);
 		await expect(revokeInvitation(t.db, { id: 'mgr2', role: 'manager' }, id)).rejects.toThrow(
-			'沒有權限'
+			ForbiddenError
 		);
 		await expect(revokeInvitation(t.db, { id: 'x', role: 'member' }, id)).rejects.toThrow(
-			'沒有權限'
+			ForbiddenError
 		);
 		expect((await row(token))?.revokedAt).toBeNull();
 		await revokeInvitation(t.db, { id: 'mgr', role: 'manager' }, id);
@@ -252,6 +253,16 @@ describe('revokeInvitation (D39)', () => {
 		const id = await idOf(token);
 		await revokeInvitation(t.db, admin, id);
 		await expect(revokeInvitation(t.db, admin, id)).rejects.toThrow('已被使用或撤銷');
+	});
+
+	it('pending list hides invitations whose inviter is banned or demoted (D37)', async () => {
+		await invite();
+		await createInvitation(t.db, { email: 'c@x.io', role: 'member', invitedBy: 'mgr2' });
+		expect(await listPendingInvitations(t.db)).toHaveLength(2);
+		await t.db.update(user).set({ banned: true }).where(eq(user.id, 'mgr'));
+		expect((await listPendingInvitations(t.db)).map((i) => i.email)).toEqual(['c@x.io']);
+		await t.db.update(user).set({ role: 'member' }).where(eq(user.id, 'mgr2'));
+		expect(await listPendingInvitations(t.db)).toHaveLength(0);
 	});
 
 	it('pending list excludes used, revoked, expired and exposes no token data', async () => {

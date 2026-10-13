@@ -19,8 +19,11 @@ const q = (s: string) => `'${s.replaceAll("'", "''")}'`;
 const now = Date.now();
 const passwordHash = await hashPassword(ADMIN_PASSWORD);
 
-// wrangler 不保證多個陳述式是同一個交易，所以不假設 user 與 account 一起成功：
-// 執行後另外檢查，若只有 user 沒有 account，就刪掉這個半成品 user 並失敗，讓 seed 可以重跑。
+// wrangler 不保證多個陳述式是同一個交易。可恢復的範圍：
+// - wrangler 執行失敗：嘗試刪除「本次新建、且還沒有 account」的 user（沒寫入就是 no-op），再丟出原始錯誤，可重跑。
+// - wrangler 回報成功但只有 user 沒有 account：同樣清掉半成品後失敗。
+// 無法恢復的範圍：清除指令本身也失敗（或程序在中途被終止）時會留下沒有密碼的 user，
+// 之後 seed 會因「已有使用者」而拒絕；此時要手動執行 `DELETE FROM user`（腳本會印出提示）。
 // account 只在剛建立 user 時寫入（以 user.id 判斷），所以已有使用者時兩者都不寫。
 const sql = `
 INSERT INTO user (id, name, email, email_verified, role, banned, created_at, updated_at)
@@ -41,8 +44,25 @@ const query = (command: string) =>
 const dir = mkdtempSync(join(tmpdir(), 'seed-admin-'));
 const file = join(dir, 'seed.sql');
 writeFileSync(file, sql, { mode: 0o600 }); // 內含密碼雜湊
+const cleanup = () => {
+	try {
+		wrangler([
+			'--command',
+			`DELETE FROM user WHERE id = ${q(userId)} AND NOT EXISTS (SELECT 1 FROM account WHERE user_id = ${q(userId)})`
+		]);
+	} catch (e) {
+		console.error(
+			'清除半成品失敗，請手動對資料庫執行 `DELETE FROM user`（此時尚無任何有效使用者）。',
+			e
+		);
+	}
+};
+
 try {
 	wrangler(['--file', file]);
+} catch (e) {
+	cleanup();
+	throw e;
 } finally {
 	rmSync(dir, { recursive: true, force: true });
 }
@@ -51,8 +71,8 @@ const { users, accounts } = query(
 	`SELECT (SELECT COUNT(*) FROM user WHERE id = ${q(userId)}) AS users, (SELECT COUNT(*) FROM account WHERE user_id = ${q(userId)}) AS accounts`
 );
 if (users === 1 && accounts !== 1) {
-	wrangler(['--command', `DELETE FROM user WHERE id = ${q(userId)}`]);
-	console.error('建立帳號到一半失敗，已清除半成品，請重跑。');
+	cleanup();
+	console.error('建立帳號到一半失敗，已嘗試清除半成品，請重跑。');
 	process.exit(1);
 }
 if (users !== 1) {

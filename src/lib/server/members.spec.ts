@@ -103,6 +103,23 @@ describe('changeRole / setBanned', () => {
 		expect(calls).toEqual(['ban:a1', 'unban:a1']);
 	});
 
+	it('rollback restores the prior state: an already-banned target stays banned', async () => {
+		await add('a1', 'system_admin', false);
+		await add('m1', 'member', true);
+		const racing: MemberApi = {
+			...api,
+			async banUser(o) {
+				await t.db.update(user).set({ banned: true }).where(eq(user.id, 'a1'));
+				return api.banUser(o);
+			}
+		};
+		await expect(setBanned(t.db, racing, headers, 'system_admin', 'm1', true)).rejects.toThrow(
+			'至少要保留'
+		);
+		expect((await get('m1'))?.banned).toBe(true);
+		expect(calls).toEqual(['ban:m1', 'ban:m1']);
+	});
+
 	it('bans and unbans regular members', async () => {
 		await add('a1', 'system_admin', null);
 		await add('m1', 'member', null);

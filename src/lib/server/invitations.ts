@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, ne } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, ne, or } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { invitation, user } from './db/schema';
 import { canInvite, INVITABLE_ROLES } from './permissions';
@@ -16,6 +16,8 @@ export const MIN_PASSWORD_LENGTH = 8;
 
 /** 驗證失敗的訊息可直接顯示給使用者 */
 export class InvitationError extends Error {}
+/** 權限不足（路由應回 403） */
+export class ForbiddenError extends InvitationError {}
 
 export const generateToken = () => {
 	const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -162,7 +164,14 @@ export const listPendingInvitations = (db: Db, now = new Date()) =>
 		.from(invitation)
 		.innerJoin(user, eq(user.id, invitation.invitedBy))
 		.where(
-			and(isNull(invitation.usedAt), isNull(invitation.revokedAt), gt(invitation.expiresAt, now))
+			and(
+				isNull(invitation.usedAt),
+				isNull(invitation.revokedAt),
+				gt(invitation.expiresAt, now),
+				// D37：邀請人已停用或不再是管理人以上的邀請等同失效，不列出
+				or(isNull(user.banned), ne(user.banned, true)),
+				inArray(user.role, ['manager', 'system_admin'])
+			)
 		)
 		.orderBy(invitation.createdAt)
 		.all();
@@ -174,11 +183,11 @@ export const revokeInvitation = async (
 	invitationId: string,
 	now = new Date()
 ) => {
-	if (!canInvite(actor.role)) throw new InvitationError('沒有權限');
+	if (!canInvite(actor.role)) throw new ForbiddenError('沒有權限');
 	const inv = await db.select().from(invitation).where(eq(invitation.id, invitationId)).get();
 	if (!inv) throw new InvitationError('找不到邀請');
 	if (inv.invitedBy !== actor.id && actor.role !== 'system_admin')
-		throw new InvitationError('沒有權限');
+		throw new ForbiddenError('沒有權限');
 
 	const [revoked] = await db
 		.update(invitation)

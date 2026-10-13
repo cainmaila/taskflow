@@ -109,5 +109,9 @@ export const setBanned = (
 			banned
 				? api.banUser({ headers, body: { userId: targetId } })
 				: api.unbanUser({ headers, body: { userId: targetId } }),
-		() => api.unbanUser({ headers, body: { userId: targetId } })
+		// 還原到變更前的狀態（原本就停用的要維持停用）
+		(prev) =>
+			prev.banned
+				? api.banUser({ headers, body: { userId: targetId } })
+				: api.unbanUser({ headers, body: { userId: targetId } })
 	);

@@ -4,6 +4,7 @@ import { APIError } from 'better-auth/api';
 import { getDb } from '#lib/server/db/index.ts';
 import {
 	createInvitation,
+	ForbiddenError,
 	InvitationError,
 	listPendingInvitations,
 	revokeInvitation
@@ -56,6 +57,7 @@ export const actions: Actions = {
 		try {
 			await revokeInvitation(getDb(env.DB), me, form.get('id')?.toString() ?? '');
 		} catch (e) {
+			if (e instanceof ForbiddenError) return fail(403, { message: e.message });
 			return fail(400, { message: message(e) });
 		}
 	},

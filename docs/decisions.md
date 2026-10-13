@@ -231,7 +231,7 @@
 ## D36：seed 改用 wrangler d1 execute，個人根延後建立（修訂 D31）
 
 - seed 腳本（`pnpm seed`）以 `wrangler d1 execute DB --local|--remote` 寫入，不走 D1 HTTP API；預設 `--local`，`--remote` 必須明確指定。
-- wrangler 不保證多個陳述式為同一交易，腳本在寫入後檢查，只有 user 沒有 credential account 時會清掉半成品並失敗，可重跑。
+- wrangler 不保證多個陳述式為同一交易。wrangler 執行失敗，或回報成功但只有 user 沒有 credential account 時，腳本會嘗試刪除這個新建的半成品 user 後失敗，可重跑。若清除本身也失敗（或程序中途被終止），會留下沒有密碼的 user、之後 seed 因已有使用者而拒絕，需手動 `DELETE FROM user`；腳本會印出此提示。
 - seed 目前不建立系統管理員的個人根（D8），因為 task 表要到實作順序第 3 步才存在。第 3 步必須為既有使用者（含 seed 的管理員與已接受邀請的成員）回補個人根，並讓之後的邀請接受流程自動建立。
 
 ## D37：邀請連結隨邀請人失效
