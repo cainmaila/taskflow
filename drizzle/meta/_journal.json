@@ -43,6 +43,13 @@
       "when": 1791908323336,
       "tag": "0005_task_parent_no_root",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791935737132,
+      "tag": "0006_task_parent_update_guard",
+      "breakpoints": true
     }
   ]
 }

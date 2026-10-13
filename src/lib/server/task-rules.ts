@@ -7,6 +7,15 @@ export const DESC_MAX = 20000;
 export class TaskError extends Error {}
 export class TaskForbiddenError extends TaskError {}
 export class TaskNotFoundError extends TaskError {}
+/** 預覽與實際不一致；plan 為最新的預覽，呼叫端應請使用者重新確認 */
+export class TaskConflictError extends TaskError {
+	constructor(
+		message: string,
+		readonly plan: unknown
+	) {
+		super(message);
+	}
+}
 
 // ---- 日期（皆為 YYYY-MM-DD 字串，比較時直接用字串序）----
 

@@ -12,6 +12,7 @@ import {
 	canView,
 	DESC_MAX,
 	isStatus,
+	TaskConflictError,
 	TaskError,
 	TaskForbiddenError,
 	TaskNotFoundError,
@@ -21,7 +22,7 @@ import {
 	type TaskSource
 } from './task-rules';
 
-export { TaskError, TaskForbiddenError, TaskNotFoundError };
+export { TaskConflictError, TaskError, TaskForbiddenError, TaskNotFoundError };
 
 type Db = ReturnType<typeof getDb>;
 
@@ -224,7 +225,14 @@ export const shareScope = async (db: Db, parentId: string, childId: string) => {
 
 /** 寫入關聯後再檢查一次循環（D1 沒有互動式交易，併發時可能同時各插一條）；有循環就撤回 */
 export const insertLink = async (db: Db, parentId: string, childId: string) => {
-	await db.insert(taskParent).values({ parentId, childId });
+	try {
+		await db.insert(taskParent).values({ parentId, childId });
+	} catch (e) {
+		// 重複送出：複合主鍵衝突。drizzle 把底層錯誤包在 cause 裡
+		const msg = `${(e as Error).message} ${((e as Error).cause as Error | undefined)?.message ?? ''}`;
+		if (/UNIQUE constraint|PRIMARY KEY/i.test(msg)) throw new TaskError('已經是子任務');
+		throw e;
+	}
 	if (await reachesItself(db, childId)) {
 		await db
 			.delete(taskParent)
@@ -379,6 +387,16 @@ export const planDelete = async (db: Db, userId: string, id: string) => {
 	};
 };
 
+/** 使用者確認的內容：刪除方式 + 當時預覽的數字。實際執行前重算，不同就拒絕（TOCTOU） */
+export const planKey = (plan: Awaited<ReturnType<typeof planDelete>>, mode: 'single' | 'tree') => {
+	if (!('single' in plan) || !plan.single) return 'none';
+	if (mode === 'single') return `single:${plan.childCount}:${plan.single.becomingTopLevel}`;
+	const t = plan.tree;
+	return t
+		? `tree:${t.willDelete}:${t.keptShared}:${t.keptNotMine}:${t.becomingTopLevel}`
+		: 'tree:-';
+};
+
 /**
  * D46/D53：真刪除，只有建立者。mode 'single' 只刪這個（子任務的關聯隨 cascade 移除，沒有 parent 者依 D49 成為頂層）；
  * 'tree' 另刪「我建立且所有 parent 都在刪除範圍內」的子孫。D1 的 batch 是單一交易。
@@ -387,10 +405,17 @@ export const deleteTask = async (
 	db: Db,
 	userId: string,
 	id: string,
-	mode: 'single' | 'tree' = 'single'
+	mode: 'single' | 'tree' = 'single',
+	// 使用者確認時的 planKey；有給就必須與現在的計畫一致，沒給（內部呼叫、測試）則不檢查
+	expect?: string
 ) => {
 	const t = await loadVisible(db, userId, id);
 	if (!canDelete(t, { userId })) throw new TaskForbiddenError('只有建立者能刪除');
+	if (expect !== undefined) {
+		const plan = await planDelete(db, userId, id);
+		if (planKey(plan, mode) !== expect)
+			throw new TaskConflictError('任務的子任務已有變動，請重新確認要刪除的範圍', plan);
+	}
 	let ids = [id];
 	if (mode === 'tree') {
 		const edges = await descendantEdges(db, id);

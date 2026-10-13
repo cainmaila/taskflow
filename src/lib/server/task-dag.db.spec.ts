@@ -14,6 +14,8 @@ import {
 	listMyTasks,
 	listParents,
 	planDelete,
+	planKey,
+	TaskConflictError,
 	searchAttachable,
 	shareScope,
 	TaskError,
@@ -100,6 +102,26 @@ describe('attachChild / cycles / detach', () => {
 		await expect(attachChild(t.db, 'u1', a, b)).rejects.toThrow('已經');
 		await attachChild(t.db, 'u1', a, c); // diamond A->C and B->C
 		expect((await listParents(t.db, 'u1', c)).visible).toHaveLength(2);
+	});
+
+	it('duplicate submit becomes a TaskError, not a raw DB error', async () => {
+		const a = await mk('u1', 'A');
+		const b = await mk('u1', 'B', a);
+		await expect(insertLink(t.db, a, b)).rejects.toThrow('已經是子任務');
+		await expect(insertLink(t.db, a, b)).rejects.toBeInstanceOf(TaskError);
+		expect(await links()).toHaveLength(1);
+	});
+
+	it('DB guard also blocks UPDATEs on task_parent', async () => {
+		const a = await mk('u1', 'A');
+		const b = await mk('u1', 'B', a);
+		const root = await ensurePersonalRoot(t.db, 'u1');
+		await expect(
+			t.db.update(taskParent).set({ parentId: root }).where(eq(taskParent.childId, b))
+		).rejects.toThrow();
+		await expect(
+			t.db.update(taskParent).set({ childId: a }).where(eq(taskParent.childId, b))
+		).rejects.toThrow();
 	});
 
 	it('insertLink post-check removes a link that closes a cycle', async () => {
@@ -333,5 +355,37 @@ describe('delete plan (D53-D55)', () => {
 				.values(rows.slice(i, i + 40).map((r) => ({ parentId: a, childId: r.id })));
 		await deleteTask(t.db, 'u1', a, 'tree');
 		expect(await t.db.select().from(task).where(eq(task.createdBy, 'u1')).all()).toEqual([]);
+	});
+
+	it('rejects (409-style) when the plan changed since the user confirmed; deletes when unchanged', async () => {
+		const a = await mk('u1', 'A');
+		await mk('u1', 'B', a);
+		const key = planKey(await planDelete(t.db, 'u1', a), 'tree');
+		// 預覽之後又多了一個子任務
+		await mk('u1', 'C', a);
+		const err = await deleteTask(t.db, 'u1', a, 'tree', key).catch((e) => e);
+		expect(err).toBeInstanceOf(TaskConflictError);
+		expect(err.plan).toMatchObject({ childCount: 2 });
+		expect(await t.db.select().from(task).all()).toHaveLength(3);
+		// single 模式也一樣檢查；沒帶確認內容視為不一致
+		await expect(
+			deleteTask(t.db, 'u1', a, 'single', planKey(await planDelete(t.db, 'u1', a), 'tree'))
+		).rejects.toBeInstanceOf(TaskConflictError);
+		await expect(deleteTask(t.db, 'u1', a, 'tree', '')).rejects.toBeInstanceOf(TaskConflictError);
+		// 重新確認後才刪
+		const fresh = planKey(await planDelete(t.db, 'u1', a), 'tree');
+		await deleteTask(t.db, 'u1', a, 'tree', fresh);
+		expect(await t.db.select().from(task).all()).toEqual([]);
+	});
+
+	it('childless task: key "none" deletes; a child appearing in between conflicts', async () => {
+		const a = await mk('u1', 'A');
+		const key = planKey(await planDelete(t.db, 'u1', a), 'single');
+		expect(key).toBe('none');
+		await mk('u1', 'B', a);
+		await expect(deleteTask(t.db, 'u1', a, 'single', key)).rejects.toBeInstanceOf(
+			TaskConflictError
+		);
+		expect(await t.db.select().from(task).all()).toHaveLength(2);
 	});
 });
