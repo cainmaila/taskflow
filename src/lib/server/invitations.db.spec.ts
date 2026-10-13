@@ -127,6 +127,31 @@ describe('acceptInvitation', () => {
 		expect((await row(token))?.usedAt).toBeNull();
 	});
 
+	describe('inviter status (D37)', () => {
+		const setInviter = (patch: Partial<typeof user.$inferInsert>) =>
+			t.db.update(user).set(patch).where(eq(user.id, 'admin'));
+
+		it.each([
+			['demoted to member', { role: 'member' }],
+			['banned', { role: 'manager', banned: true }]
+		])('rejects when inviter is %s, without consuming', async (_, patch) => {
+			const token = await invite();
+			await setInviter(patch);
+			const { api, createUser } = okApi();
+			await expect(acceptInvitation(t.db, { api }, input(token))).rejects.toThrow('邀請已失效');
+			expect((await row(token))?.usedAt).toBeNull();
+			expect(createUser).not.toHaveBeenCalled();
+		});
+
+		it('accepts when inviter is still manager', async () => {
+			const token = await invite();
+			await setInviter({ role: 'manager', banned: false });
+			const { api, createUser } = okApi();
+			await acceptInvitation(t.db, { api }, input(token));
+			expect(createUser).toHaveBeenCalledTimes(1);
+		});
+	});
+
 	it('rejects when the email got registered after the invitation was made', async () => {
 		const token = await invite('admin@x.io').catch(() => null);
 		expect(token).toBeNull(); // 建立時就擋掉

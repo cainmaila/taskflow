@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { invitation, user } from './db/schema';
-import { INVITABLE_ROLES } from './permissions';
+import { canInvite, INVITABLE_ROLES } from './permissions';
 
 type Db = ReturnType<typeof getDb>;
 type UserCreator = {
@@ -88,6 +88,11 @@ export const acceptInvitation = async (
 	const pending = await findUsableInvitation(db, input.token, now);
 	if (!pending) throw new InvitationError('邀請連結無效或已過期');
 	if (await emailTaken(db, pending.email)) throw new InvitationError('此 Email 已註冊');
+
+	// D37：邀請隨邀請人失效（缺席、停用或不再是管理人以上）
+	const inviter = await db.select().from(user).where(eq(user.id, pending.invitedBy)).get();
+	if (!inviter || inviter.banned || !canInvite(inviter.role))
+		throw new InvitationError('邀請已失效');
 
 	// 原子消耗：同一連結只有一個請求能成功
 	const [consumed] = await db
