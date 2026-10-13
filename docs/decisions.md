@@ -226,4 +226,10 @@
 - 使用 shadcn-svelte（bits-ui + Tailwind 4），元件原始碼放在 `src/lib/components/ui/`，不自己手刻基礎元件。
 - 路徑別名沿用專案的 `#lib`（`components.json` 已設定）。
 - 需要新元件時用 `pnpm dlx shadcn-svelte@latest add <name>`。
-- 已安裝：button、input、label、card、alert。
+- 已安裝：button、input、label、card、alert、badge、native-select。
+
+## D36：seed 改用 wrangler d1 execute，個人根延後建立（修訂 D31）
+
+- seed 腳本（`pnpm seed`）以 `wrangler d1 execute DB --local|--remote` 寫入，不走 D1 HTTP API；預設 `--local`，`--remote` 必須明確指定。
+- wrangler 不保證多個陳述式為同一交易，腳本在寫入後檢查，只有 user 沒有 credential account 時會清掉半成品並失敗，可重跑。
+- seed 目前不建立系統管理員的個人根（D8），因為 task 表要到實作順序第 3 步才存在。第 3 步必須為既有使用者（含 seed 的管理員與已接受邀請的成員）回補個人根，並讓之後的邀請接受流程自動建立。
