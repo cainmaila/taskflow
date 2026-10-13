@@ -17,7 +17,9 @@ afterAll(() => t.dispose());
 beforeEach(async () => {
 	await t.db.delete(invitation);
 	await t.db.delete(user);
-	await t.db.insert(user).values({ id: 'admin', name: 'Admin', email: 'admin@x.io' });
+	await t.db
+		.insert(user)
+		.values({ id: 'admin', name: 'Admin', email: 'admin@x.io', role: 'system_admin' });
 });
 
 const row = async (token: string) =>
