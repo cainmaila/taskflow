@@ -22,3 +22,10 @@ SvelteKit 2 + Svelte 5、Tailwind 4、Drizzle ORM (D1 / SQLite)、better-auth、
 - `pnpm auth:schema` 更新 better-auth 的 Drizzle schema → `pnpm db:generate` 產生 migration（需 `.env` 有 Cloudflare 三個變數，值可先填假的）→ `pnpm db:migrate:local` 套用到本機 D1。
 - `pnpm cf:types`：改 `wrangler.jsonc` 後重新產生 `worker-configuration.d.ts`。
 - 遠端：先 `wrangler d1 create taskflow`，把 `database_id` 填進 `wrangler.jsonc`，再 `pnpm db:migrate:remote` 與 `wrangler deploy`。
+
+## 帳號：seed 與邀請
+
+- **建立第一位系統管理員（D31）**：在 `.env` 設 `ADMIN_EMAIL`、`ADMIN_PASSWORD`（可選 `ADMIN_NAME`；僅限本機，不要放進線上環境），先 `pnpm db:migrate:local`，再 `pnpm seed`。預設寫入本機 D1；寫入遠端必須明確 `pnpm seed -- --remote`。系統內已有任何使用者時腳本拒絕執行（exit 1）。
+- **邀請（D29）**：管理人與系統管理員在 `/members` 輸入 email 與角色，取得一次性連結（7 天有效、只能用一次，只顯示一次，資料庫只存 sha256），自行轉交；對方在 `/invite/<token>` 設定姓名與密碼後自動登入。不寄信。
+- **系統管理員**可在 `/members` 改角色、停用／啟用（停用 = better-auth ban，不刪除，D32）。最後一位有效的系統管理員不能被降級或停用（D27）。
+- 本機煙霧測試：`pnpm build && pnpm exec wrangler dev --port 8792 --var ORIGIN:http://localhost:8792`。
