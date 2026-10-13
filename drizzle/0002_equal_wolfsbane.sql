@@ -1,0 +1,1 @@
+ALTER TABLE `invitation` ADD `revoked_at` integer;

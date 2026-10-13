@@ -220,3 +220,37 @@
 - 個人根只是「我的任務」的容器，不是真正的任務：無到期日、不顯示在清單、不上甘特圖。
 - 其餘所有任務（含個人根底下的個人任務）`due_date` 必填。
 - 資料庫層以 CHECK 保證：`root_owner_id IS NOT NULL OR due_date IS NOT NULL`。
+
+## D35：UI 套件採用 shadcn-svelte
+
+- 使用 shadcn-svelte（bits-ui + Tailwind 4），元件原始碼放在 `src/lib/components/ui/`，不自己手刻基礎元件。
+- 路徑別名沿用專案的 `#lib`（`components.json` 已設定）。
+- 需要新元件時用 `pnpm dlx shadcn-svelte@latest add <name>`。
+- 已安裝：button、input、label、card、alert、badge、native-select。
+
+## D36：seed 改用 wrangler d1 execute，個人根延後建立（修訂 D31）
+
+- seed 腳本（`pnpm seed`）以 `wrangler d1 execute DB --local|--remote` 寫入，不走 D1 HTTP API；預設 `--local`，`--remote` 必須明確指定。
+- wrangler 不保證多個陳述式為同一交易。wrangler 執行失敗，或回報成功但只有 user 沒有 credential account 時，腳本會嘗試刪除這個新建的半成品 user 後失敗，可重跑。若清除本身也失敗（或程序中途被終止），會留下沒有密碼的 user、之後 seed 因已有使用者而拒絕，需手動 `DELETE FROM user`；腳本會印出此提示。
+- seed 目前不建立系統管理員的個人根（D8），因為 task 表要到實作順序第 3 步才存在。第 3 步必須為既有使用者（含 seed 的管理員與已接受邀請的成員）回補個人根，並讓之後的邀請接受流程自動建立。
+
+## D37：邀請連結隨邀請人失效
+
+- 接受邀請時檢查邀請人：必須仍是管理人以上（manager 或 system_admin）且未被停用，否則拒絕。
+- 邀請人被降級或停用後，其尚未使用的連結即失效。
+
+## D38：成員 email 對所有登入者可見
+
+- `/members` 列出名字、email、角色、狀態，所有登入成員皆可看。
+- 理由：內部小團隊，email 即登入帳號，指派時需要分辨同名的人。
+
+## D39：邀請可列出與撤銷
+
+- 成員頁新增「待使用的邀請」區塊：email、邀請人、到期日；連結本身不再顯示（只存雜湊）。
+- 撤銷 = 作廢該邀請，連結立即失效。
+- 權限（暫定，待使用者確認）：管理人以上可看列表；邀請人本人或系統管理員可撤銷。
+
+## D40：同 email 只保留一張有效邀請
+
+- 對同一 email 發新邀請時，自動作廢該 email 先前尚未使用的邀請。
+- 同一 email 同時只會有一張有效邀請；重發（對方弄丟連結）即取代舊的。

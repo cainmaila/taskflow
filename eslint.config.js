@@ -34,6 +34,11 @@ export default defineConfig(
 		}
 	},
 	{
+		// shadcn-svelte 產生的元件：按鈕的 href 是呼叫端傳入，不由元件解析
+		files: ['src/lib/components/ui/**'],
+		rules: { 'svelte/no-navigation-without-resolve': 'off' }
+	},
+	{
 		// Override or add rule settings here, such as:
 		// 'svelte/button-has-type': 'error'
 		rules: {}
