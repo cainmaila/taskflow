@@ -2,7 +2,6 @@
 	import './layout.css';
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
-	import DemoLinks from './demo/DemoLinks.svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import favicon from '#lib/assets/favicon.svg';
 	import type { LayoutProps } from './$types';
@@ -28,4 +27,3 @@
 {/if}
 
 {@render children()}
-<DemoLinks />
