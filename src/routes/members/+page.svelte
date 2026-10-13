@@ -23,9 +23,6 @@
 <main class="mx-auto max-w-3xl space-y-6 p-4">
 	<div class="flex items-center justify-between">
 		<h1 class="text-2xl font-semibold">成員</h1>
-		<form method="post" action="?/signOut" use:enhance>
-			<Button type="submit" variant="outline">登出</Button>
-		</form>
 	</div>
 
 	{#if form?.message}

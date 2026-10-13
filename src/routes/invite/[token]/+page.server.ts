@@ -40,6 +40,6 @@ export const actions: Actions = {
 			if (e instanceof APIError) redirect(302, '/login');
 			throw e;
 		}
-		redirect(302, '/members');
+		redirect(302, '/tasks');
 	}
 };
