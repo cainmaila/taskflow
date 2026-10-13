@@ -3,7 +3,7 @@ import { APIError } from 'better-auth/api';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals }) => {
-	if (locals.user) redirect(302, '/members');
+	if (locals.user) redirect(302, '/tasks');
 };
 
 export const actions: Actions = {
@@ -22,6 +22,6 @@ export const actions: Actions = {
 			}
 			throw e;
 		}
-		redirect(302, '/members');
+		redirect(302, '/tasks');
 	}
 };
