@@ -7,6 +7,15 @@ export const DESC_MAX = 20000;
 export class TaskError extends Error {}
 export class TaskForbiddenError extends TaskError {}
 export class TaskNotFoundError extends TaskError {}
+/** 預覽與實際不一致；plan 為最新的預覽，呼叫端應請使用者重新確認 */
+export class TaskConflictError extends TaskError {
+	constructor(
+		message: string,
+		readonly plan: unknown
+	) {
+		super(message);
+	}
+}
 
 // ---- 日期（皆為 YYYY-MM-DD 字串，比較時直接用字串序）----
 
@@ -62,14 +71,15 @@ type Actor = { userId: string };
 type Owned = { createdBy: string; assigneeId: string | null };
 
 /**
- * D12：建立者或指派人可見。
- * 之後的步驟在此擴充：所掛專案的成員（D11）、祖先任務可見者（D14）。
+ * D12/D14：任務本身或任一祖先的建立者／指派人可見。
+ * `chain` = 該任務加上它所有祖先（由 DB 的遞迴查詢取得）。第 5 步在此加入專案成員（D11）。
  */
-export const canView = (t: Owned, { userId }: Actor) =>
-	t.createdBy === userId || t.assigneeId === userId;
+export const canView = (chain: Owned[], { userId }: Actor) =>
+	chain.some((t) => t.createdBy === userId || t.assigneeId === userId);
 
 /** D45：建立者與指派人可編輯內容欄位（專案成員的權限待第 5 步） */
-export const canEdit = (t: Owned, actor: Actor) => canView(t, actor);
+export const canEdit = (t: Owned, { userId }: Actor) =>
+	t.createdBy === userId || t.assigneeId === userId;
 
 /** D45：只有建立者能改指派人、刪除 */
 export const canAssign = (t: Owned, { userId }: Actor) => t.createdBy === userId;
@@ -113,4 +123,42 @@ export const applyFilters = <T extends Row>(rows: T[], f: TaskFilters, today: st
 		active: kept.filter((r) => r.status !== 'done'),
 		done: kept.filter((r) => r.status === 'done')
 	};
+};
+
+// ---- 刪除計畫（D53–D55）----
+
+export const TREE_DELETE_CAP = 1000;
+
+export type DescendantEdge = { childId: string; parentId: string; createdBy: string };
+
+/**
+ * 整棵子樹刪除的範圍：被刪任務 + 「我建立」且「所有 parent 都在刪除範圍內」的子孫（D54/D55）。
+ * 以不動點迭代處理多 parent（菱形）；不遞迴。edges 為被刪任務所有子孫的所有 parent 邊。
+ */
+export const computeTreeDelete = (rootId: string, userId: string, edges: DescendantEdge[]) => {
+	const parents = new Map<string, string[]>();
+	const creator = new Map<string, string>();
+	for (const e of edges) {
+		parents.set(e.childId, [...(parents.get(e.childId) ?? []), e.parentId]);
+		creator.set(e.childId, e.createdBy);
+	}
+	const deleted = new Set([rootId]);
+	for (let changed = true; changed;) {
+		changed = false;
+		for (const [id, ps] of parents)
+			if (!deleted.has(id) && creator.get(id) === userId && ps.every((p) => deleted.has(p))) {
+				deleted.add(id);
+				changed = true;
+			}
+	}
+	let keptNotMine = 0;
+	let keptShared = 0;
+	let becomingTopLevel = 0;
+	for (const [id, ps] of parents) {
+		if (deleted.has(id)) continue;
+		if (creator.get(id) !== userId) keptNotMine++;
+		else keptShared++;
+		if (ps.every((p) => deleted.has(p))) becomingTopLevel++;
+	}
+	return { deleteIds: [...deleted], keptNotMine, keptShared, becomingTopLevel };
 };

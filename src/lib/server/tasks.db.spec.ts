@@ -79,11 +79,11 @@ describe('ensurePersonalRoot', () => {
 });
 
 describe('createTask', () => {
-	it('links root -> task and validates input', async () => {
+	it('top-level task has no task_parent row (D49) and validates input', async () => {
 		const id = await mk('u1');
-		const root = await ensurePersonalRoot(t.db, 'u1');
-		const link = await t.db.select().from(taskParent).where(eq(taskParent.childId, id)).get();
-		expect(link?.parentId).toBe(root);
+		expect(await t.db.select().from(taskParent).where(eq(taskParent.childId, id)).all()).toEqual(
+			[]
+		);
 		await expect(createTask(t.db, 'u1', { title: ' ', dueDate: '2026-10-20' })).rejects.toThrow(
 			TaskError
 		);
@@ -93,6 +93,14 @@ describe('createTask', () => {
 		await expect(createTask(t.db, 'u1', { title: 'a', dueDate: undefined })).rejects.toThrow(
 			TaskError
 		);
+	});
+
+	it('DB guard rejects links involving a personal root or self', async () => {
+		const id = await mk('u1');
+		const root = await ensurePersonalRoot(t.db, 'u1');
+		await expect(t.db.insert(taskParent).values({ parentId: root, childId: id })).rejects.toThrow();
+		await expect(t.db.insert(taskParent).values({ parentId: id, childId: root })).rejects.toThrow();
+		await expect(t.db.insert(taskParent).values({ parentId: id, childId: id })).rejects.toThrow();
 	});
 });
 

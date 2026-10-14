@@ -11,6 +11,10 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import { renderMarkdown } from '#lib/markdown.js';
 	import { statusLabel } from '../status';
+	import TaskRow from '../TaskRow.svelte';
+	import ConfirmDialog from '../../ConfirmDialog.svelte';
+	import AttachPicker from './AttachPicker.svelte';
+	import DeleteTask from './DeleteTask.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
@@ -19,6 +23,7 @@
 	let description = $derived(data.task.description);
 	let startDate = $derived(data.task.startDate ?? '');
 	let preview = $state(false);
+	let removing = $state<(typeof data.parents.visible)[number] | null>(null);
 </script>
 
 <svelte:head><title>{data.task.title} - Taskflow</title></svelte:head>
@@ -40,6 +45,12 @@
 		>
 	{:else if form?.saved}
 		<Alert.Root><Alert.Description>已儲存</Alert.Description></Alert.Root>
+	{:else if form?.added}
+		<Alert.Root><Alert.Description>已新增子任務</Alert.Description></Alert.Root>
+	{:else if form?.attached}
+		<Alert.Root><Alert.Description>已掛上</Alert.Description></Alert.Root>
+	{:else if form?.detached}
+		<Alert.Root><Alert.Description>已移除</Alert.Description></Alert.Root>
 	{/if}
 
 	<Card.Root>
@@ -126,15 +137,73 @@
 		</form>
 	</Card.Root>
 
-	{#if data.canChangeAssignee}
-		<form
-			method="post"
-			action="?/delete"
-			use:enhance={({ cancel }) => {
-				if (!confirm('確定要刪除這個任務嗎？此動作無法復原。')) cancel();
-			}}
-		>
-			<Button type="submit" variant="destructive">刪除任務</Button>
+	<section class="space-y-3">
+		<h2 class="text-lg font-semibold">上層任務</h2>
+		{#if data.parents.visible.length || data.parents.hiddenCount}
+			<ul class="divide-y rounded-md border">
+				{#each data.parents.visible as p (p.id)}
+					<li class="flex items-center gap-2 p-2">
+						<a href={resolve('/tasks/[id]', { id: p.id })} class="flex-1 font-medium">{p.title}</a>
+						<Button type="button" size="sm" variant="outline" onclick={() => (removing = p)}
+							>移除</Button
+						>
+					</li>
+				{/each}
+				{#if data.parents.hiddenCount}
+					<li class="p-2 text-sm text-muted-foreground">
+						另有 {data.parents.hiddenCount} 個你看不到的上層任務
+					</li>
+				{/if}
+			</ul>
+		{:else}
+			<p class="text-sm text-muted-foreground">這是頂層任務，沒有上層任務。</p>
+		{/if}
+	</section>
+
+	<section class="space-y-3">
+		<h2 class="text-lg font-semibold">
+			子任務
+			{#if data.children.length}
+				<span class="text-sm font-normal text-muted-foreground">
+					{data.children.filter((c) => c.status === 'done').length}/{data.children.length} 完成
+				</span>
+			{/if}
+		</h2>
+		<Card.Root>
+			<Card.Content class="divide-y">
+				{#each data.children as c (c.id)}
+					<TaskRow t={c} today={data.today} nested parentId={data.task.id} meId={data.user?.id} />
+				{:else}
+					<p class="py-3 text-sm text-muted-foreground">還沒有子任務。</p>
+				{/each}
+			</Card.Content>
+		</Card.Root>
+		<form method="post" action="?/addChild" use:enhance class="flex flex-wrap items-end gap-4">
+			<div class="min-w-48 flex-1 space-y-2">
+				<Label for="child-title">新增子任務</Label>
+				<Input id="child-title" name="title" required maxlength={200} />
+			</div>
+			<div class="space-y-2">
+				<Label for="child-due">到期日</Label>
+				<Input id="child-due" name="dueDate" type="date" required />
+			</div>
+			<Button type="submit">新增</Button>
 		</form>
+		<AttachPicker
+			taskId={data.task.id}
+			version={`${data.parents.visible.length}/${data.children.length}`}
+		/>
+	</section>
+
+	{#if data.canDelete}
+		<DeleteTask taskId={data.task.id} />
 	{/if}
+	<ConfirmDialog
+		bind:open={() => removing !== null, (v) => !v && (removing = null)}
+		title="移除上層任務「{removing?.title ?? ''}」？"
+		description="只會移除這個關聯，任務本身不會被刪除。"
+		confirmLabel="移除"
+		action="?/detach"
+		fields={{ parentId: removing?.id ?? '' }}
+	/>
 </main>

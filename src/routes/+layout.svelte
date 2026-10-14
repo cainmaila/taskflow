@@ -17,6 +17,9 @@
 	<nav class="border-b">
 		<div class="mx-auto flex max-w-3xl items-center gap-4 p-3">
 			<a href={resolve('/tasks')} class="font-semibold">我的任務</a>
+			<a href={resolve('/tasks/assigned')} class="text-muted-foreground hover:text-foreground"
+				>我指派的</a
+			>
 			<a href={resolve('/members')} class="text-muted-foreground hover:text-foreground">成員</a>
 			<span class="ml-auto text-sm text-muted-foreground">{data.user.name}</span>
 			<form method="post" action="/members?/signOut" use:enhance>

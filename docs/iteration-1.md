@@ -42,7 +42,7 @@
 | user（better-auth） | role（system_admin／manager／member）、disabled_at                                                                                           |
 | invitation          | email、token、expires_at、used_at、invited_by                                                                                                |
 | task                | id、title、description、status、assignee_id、start_date、due_date（個人根可空，其餘必填，見 D34）、created_by、root_owner_id（僅個人根有值） |
-| task_parent         | parent_id、child_id（複合主鍵，寫入前做循環檢查）                                                                                            |
+| task_parent         | parent_id、child_id（複合主鍵，寫入前做循環檢查；只存真正的 parent，個人根不會出現，D49）                                                    |
 | task_blocker        | task_id、blocker_id（寫入前做循環檢查）                                                                                                      |
 | project             | id、name                                                                                                                                     |
 | project_member      | project_id、user_id                                                                                                                          |
@@ -56,7 +56,7 @@
 1. 基礎設施（已完成）：`adapter-cloudflare`、`wrangler.jsonc`、D1 migration 流程。
 2. 帳號（已完成）：角色欄位、seed 腳本、邀請連結、停用。個人根不在 seed／接受邀請時建立，改為第一次進「我的任務」時懶建立（D41）。
 3. 任務核心（已實作，待 review）：task／task_parent 表（移除 priority）、懶建立個人根（D41，個人根 due_date 豁免見 D34）、「我的任務」清單與篩選（狀態／來源／到期，D42–D43；專案篩選待第 5 步）、快速新增與 `/tasks/[id]` 詳情編輯（D44–D46）、Markdown 消毒渲染。task_parent 僅建表並在建立任務時寫入「個人根→任務」，循環檢查與子任務 UI 屬第 4 步。
-4. DAG：task_parent、循環檢查、子任務展開、多 parent 顯示。
+4. DAG（已實作，待 review）：task_parent 只存真實 parent（D49，migration 0005 移除舊的根關聯並加 DB 護欄）、遞迴 CTE 可見性（D14）、循環檢查與寫入後複查（D3）、掛／移 parent（D50）與分享範圍提示（D15）、逐層載入子任務與 n/m（D52）、看不到的 parent 只顯示數量（D51）、刪除二選一（D53–D55）、「我指派給別人的」清單。
 5. 專案：project、成員、任務掛專案、可見性查詢（含向下傳遞）。
 6. 擱置與 blocker。
 7. 留言串。
