@@ -5,7 +5,8 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 
-	let { taskId }: { taskId: string } = $props();
+	// version 變了（掛上、移除後頁面資料更新），已搜尋的候選就過期了
+	let { taskId, version }: { taskId: string; version: string } = $props();
 
 	type Candidate = { id: string; title: string; dueDate: string | null };
 	let q = $state('');
@@ -17,6 +18,17 @@
 	let timer: ReturnType<typeof setTimeout>;
 	let seq = 0;
 	let submitting = $state(false);
+
+	let lastVersion: string | null = null;
+	$effect(() => {
+		const first = lastVersion === null;
+		const same = version === lastVersion;
+		lastVersion = version;
+		if (first || same) return;
+		seq++;
+		results = null;
+		q = '';
+	});
 
 	const search = async () => {
 		error = '';
@@ -82,7 +94,7 @@
 				{#if scope.length}
 					此任務將對 {scope.map((u) => u.name).join('、')} 可見。
 				{:else}
-					不會有新的人看到這個任務。
+					目前能看到這個任務的人都已能看到上層任務，不會有新的人看到。
 				{/if}
 			</AlertDialog.Description>
 		</AlertDialog.Header>

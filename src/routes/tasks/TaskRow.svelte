@@ -22,6 +22,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { statusLabel } from './status';
 	import TaskRow from './TaskRow.svelte';
+	import ConfirmDialog from '../ConfirmDialog.svelte';
 
 	// nested：在某個 parent 底下展開時，parentCount 要扣掉目前這個 parent（D21）
 	// parentId：這一列是在哪個 parent 底下顯示（用於「移除」）；meId 用來判斷是否有操作權（建立者或指派人）
@@ -82,9 +83,9 @@
 		!!parentId && !!meId && (t.createdBy === meId || t.assigneeId === meId)
 	);
 	let detachError = $state('');
+	let confirmOpen = $state(false);
 	const detach = async () => {
-		if (!parentId || !confirm(`確定要把「${t.title}」從上層任務移除嗎？任務本身不會被刪除。`))
-			return;
+		if (!parentId) return;
 		detachError = '';
 		const body = new FormData();
 		body.set('parentId', parentId);
@@ -110,7 +111,7 @@
 				type="button"
 				variant="ghost"
 				size="sm"
-				class="w-8 px-0"
+				class="size-8 shrink-0 p-0"
 				aria-expanded={expanded}
 				aria-label={expanded ? '收合子任務' : '展開子任務'}
 				onclick={toggle}>{loading ? '…' : expanded ? '▾' : '▸'}</Button
@@ -128,7 +129,7 @@
 			{/if}
 			{#if otherParents > 0}
 				<span class="text-sm text-muted-foreground"
-					>{nested ? '另有' : '有'} {otherParents} 個 parent</span
+					>{nested ? '另有' : '有'} {otherParents} 個上層任務</span
 				>
 			{/if}
 			<span class="text-sm {overdue ? 'font-medium text-destructive' : 'text-muted-foreground'}">
@@ -136,9 +137,20 @@
 			</span>
 		</span>
 		{#if canDetach}
-			<Button type="button" size="sm" variant="outline" onclick={detach}>移除</Button>
+			<Button type="button" size="sm" variant="outline" onclick={() => (confirmOpen = true)}
+				>移除</Button
+			>
 		{/if}
 	</div>
+	{#if canDetach}
+		<ConfirmDialog
+			bind:open={confirmOpen}
+			title="移除「{t.title}」？"
+			description="只會移除與上層任務的關聯，任務本身不會被刪除。"
+			confirmLabel="移除"
+			onconfirm={detach}
+		/>
+	{/if}
 	{#if detachError}<p class="pl-8 text-sm text-destructive" role="alert">{detachError}</p>{/if}
 	{#if error}<p class="pl-8 text-sm text-destructive" role="alert">{error}</p>{/if}
 	{#if expanded && children}

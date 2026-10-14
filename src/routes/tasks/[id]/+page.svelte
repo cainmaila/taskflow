@@ -12,6 +12,7 @@
 	import { renderMarkdown } from '#lib/markdown.js';
 	import { statusLabel } from '../status';
 	import TaskRow from '../TaskRow.svelte';
+	import ConfirmDialog from '../../ConfirmDialog.svelte';
 	import AttachPicker from './AttachPicker.svelte';
 	import DeleteTask from './DeleteTask.svelte';
 	import type { PageProps } from './$types';
@@ -22,6 +23,7 @@
 	let description = $derived(data.task.description);
 	let startDate = $derived(data.task.startDate ?? '');
 	let preview = $state(false);
+	let removing = $state<(typeof data.parents.visible)[number] | null>(null);
 </script>
 
 <svelte:head><title>{data.task.title} - Taskflow</title></svelte:head>
@@ -43,8 +45,12 @@
 		>
 	{:else if form?.saved}
 		<Alert.Root><Alert.Description>已儲存</Alert.Description></Alert.Root>
-	{:else if form?.added || form?.attached || form?.detached}
-		<Alert.Root><Alert.Description>已更新</Alert.Description></Alert.Root>
+	{:else if form?.added}
+		<Alert.Root><Alert.Description>已新增子任務</Alert.Description></Alert.Root>
+	{:else if form?.attached}
+		<Alert.Root><Alert.Description>已掛上</Alert.Description></Alert.Root>
+	{:else if form?.detached}
+		<Alert.Root><Alert.Description>已移除</Alert.Description></Alert.Root>
 	{/if}
 
 	<Card.Root>
@@ -132,26 +138,25 @@
 	</Card.Root>
 
 	<section class="space-y-3">
-		<h2 class="text-lg font-semibold">Parent</h2>
+		<h2 class="text-lg font-semibold">上層任務</h2>
 		{#if data.parents.visible.length || data.parents.hiddenCount}
 			<ul class="divide-y rounded-md border">
 				{#each data.parents.visible as p (p.id)}
 					<li class="flex items-center gap-2 p-2">
 						<a href={resolve('/tasks/[id]', { id: p.id })} class="flex-1 font-medium">{p.title}</a>
-						<form method="post" action="?/detach" use:enhance>
-							<input type="hidden" name="parentId" value={p.id} />
-							<Button type="submit" size="sm" variant="outline">移除</Button>
-						</form>
+						<Button type="button" size="sm" variant="outline" onclick={() => (removing = p)}
+							>移除</Button
+						>
 					</li>
 				{/each}
 				{#if data.parents.hiddenCount}
 					<li class="p-2 text-sm text-muted-foreground">
-						另有 {data.parents.hiddenCount} 個你看不到的 parent
+						另有 {data.parents.hiddenCount} 個你看不到的上層任務
 					</li>
 				{/if}
 			</ul>
 		{:else}
-			<p class="text-sm text-muted-foreground">這是頂層任務，沒有 parent。</p>
+			<p class="text-sm text-muted-foreground">這是頂層任務，沒有上層任務。</p>
 		{/if}
 	</section>
 
@@ -184,10 +189,21 @@
 			</div>
 			<Button type="submit">新增</Button>
 		</form>
-		<AttachPicker taskId={data.task.id} />
+		<AttachPicker
+			taskId={data.task.id}
+			version={`${data.parents.visible.length}/${data.children.length}`}
+		/>
 	</section>
 
 	{#if data.canDelete}
 		<DeleteTask taskId={data.task.id} />
 	{/if}
+	<ConfirmDialog
+		bind:open={() => removing !== null, (v) => !v && (removing = null)}
+		title="移除上層任務「{removing?.title ?? ''}」？"
+		description="只會移除這個關聯，任務本身不會被刪除。"
+		confirmLabel="移除"
+		action="?/detach"
+		fields={{ parentId: removing?.id ?? '' }}
+	/>
 </main>

@@ -82,7 +82,7 @@
 						<input type="hidden" name="mode" value="single" />
 						<input type="hidden" name="expect" value={preview.keys.single} />
 						<p>
-							只刪除這個任務，子任務保留；{plan.single.becomingTopLevel} 個子任務會失去 parent 並成為頂層任務。
+							只刪除這個任務，子任務保留；{plan.single.becomingTopLevel} 個子任務會失去上層任務並成為頂層任務。
 						</p>
 						<Button type="submit" variant="outline">只刪這個</Button>
 					</form>

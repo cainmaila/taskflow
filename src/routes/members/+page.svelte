@@ -7,9 +7,12 @@
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import * as NativeSelect from '#lib/components/ui/native-select/index.js';
+	import ConfirmDialog from '../ConfirmDialog.svelte';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
+
+	let revoking = $state<(typeof data.pendingInvitations)[number] | null>(null);
 
 	const roleLabel: Record<string, string> = {
 		system_admin: '系統管理員',
@@ -83,16 +86,9 @@
 						</div>
 						<Badge variant="secondary">{roleLabel[inv.role] ?? inv.role}</Badge>
 						{#if inv.invitedBy === data.me.id || data.canManage}
-							<form
-								method="post"
-								action="?/revoke"
-								use:enhance={({ cancel }) => {
-									if (!confirm(`確定要撤銷 ${inv.email} 的邀請嗎？連結會立即失效。`)) cancel();
-								}}
+							<Button type="button" variant="outline" size="sm" onclick={() => (revoking = inv)}
+								>撤銷</Button
 							>
-								<input type="hidden" name="id" value={inv.id} />
-								<Button type="submit" variant="outline" size="sm">撤銷</Button>
-							</form>
 						{/if}
 					</div>
 				{:else}
@@ -134,4 +130,12 @@
 			{/each}
 		</Card.Content>
 	</Card.Root>
+	<ConfirmDialog
+		bind:open={() => revoking !== null, (v) => !v && (revoking = null)}
+		title="撤銷邀請？"
+		description="{revoking?.email ?? ''} 的邀請連結會立即失效。"
+		confirmLabel="撤銷"
+		action="?/revoke"
+		fields={{ id: revoking?.id ?? '' }}
+	/>
 </main>
