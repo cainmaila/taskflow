@@ -98,8 +98,11 @@
 						results = null;
 						q = '';
 						seq++;
-						await update();
-						submitting = false;
+						try {
+							await update();
+						} finally {
+							submitting = false;
+						}
 					};
 				}}
 			>
