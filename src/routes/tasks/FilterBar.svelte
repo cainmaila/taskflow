@@ -8,9 +8,11 @@
 	let {
 		filters,
 		showSource = true,
+		projects = [],
 		clearHref
 	}: {
-		filters: { statuses: string[]; source: string; due: string };
+		filters: { statuses: string[]; source: string; due: string; projectId?: string };
+		projects?: { id: string; name: string }[];
 		showSource?: boolean;
 		clearHref: string;
 	} = $props();
@@ -45,6 +47,17 @@
 			<NativeSelect.Option value="week">本週</NativeSelect.Option>
 		</NativeSelect.Root>
 	</div>
+	{#if projects.length}
+		<div class="space-y-2">
+			<Label for="f-project">專案</Label>
+			<NativeSelect.Root id="f-project" name="project" value={filters.projectId ?? ''}>
+				<NativeSelect.Option value="">全部</NativeSelect.Option>
+				{#each projects as pr (pr.id)}
+					<NativeSelect.Option value={pr.id}>{pr.name}</NativeSelect.Option>
+				{/each}
+			</NativeSelect.Root>
+		</div>
+	{/if}
 	<Button type="submit" variant="secondary">篩選</Button>
 	<Button href={clearHref} variant="ghost">清除</Button>
 </form>

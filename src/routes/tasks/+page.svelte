@@ -40,7 +40,7 @@
 		</form>
 	</Card.Root>
 
-	<FilterBar filters={data.filters} clearHref={resolve('/tasks')} />
+	<FilterBar filters={data.filters} projects={data.projects} clearHref={resolve('/tasks')} />
 
 	<Card.Root>
 		<Card.Content class="divide-y">

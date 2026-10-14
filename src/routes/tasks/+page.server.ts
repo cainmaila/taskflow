@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { env } from 'cloudflare:workers';
 import { getDb } from '#lib/server/db/index.ts';
 import { parseFilters, todayISO } from '#lib/server/task-rules.ts';
+import { listMemberProjects } from '#lib/server/projects.ts';
 import { createTask, ensurePersonalRoot, listMyTasks, TaskError } from '#lib/server/tasks.ts';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -12,7 +13,12 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	await ensurePersonalRoot(db, me.id);
 	const today = todayISO();
 	const filters = parseFilters(url.searchParams);
-	return { today, filters, ...(await listMyTasks(db, me.id, filters, today)) };
+	return {
+		today,
+		filters,
+		projects: await listMemberProjects(db, me.id),
+		...(await listMyTasks(db, me.id, filters, today))
+	};
 };
 
 export const actions: Actions = {

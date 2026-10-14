@@ -23,6 +23,7 @@
 	let description = $derived(data.task.description);
 	let startDate = $derived(data.task.startDate ?? '');
 	let preview = $state(false);
+	let leavingProject = $state<(typeof data.projects.attached)[number] | null>(null);
 	let removing = $state<(typeof data.parents.visible)[number] | null>(null);
 </script>
 
@@ -51,6 +52,10 @@
 		<Alert.Root><Alert.Description>已掛上</Alert.Description></Alert.Root>
 	{:else if form?.detached}
 		<Alert.Root><Alert.Description>已移除</Alert.Description></Alert.Root>
+	{:else if form?.projectAttached}
+		<Alert.Root><Alert.Description>已掛入專案</Alert.Description></Alert.Root>
+	{:else if form?.projectDetached}
+		<Alert.Root><Alert.Description>已取消掛接專案</Alert.Description></Alert.Root>
 	{/if}
 
 	<Card.Root>
@@ -161,6 +166,57 @@
 	</section>
 
 	<section class="space-y-3">
+		<h2 class="text-lg font-semibold">所屬專案</h2>
+		{#if data.projects.attached.length}
+			<ul class="divide-y rounded-md border">
+				{#each data.projects.attached as pr (pr.id)}
+					<li class="flex items-center gap-2 p-2">
+						<a href={resolve('/projects/[id]', { id: pr.id })} class="flex-1 font-medium"
+							>{pr.name}</a
+						>
+						{#if pr.archived}<Badge variant="outline">已封存</Badge>{/if}
+						{#if pr.canDetach}
+							<Button
+								type="button"
+								size="sm"
+								variant="outline"
+								onclick={() => (leavingProject = pr)}>取消掛接</Button
+							>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
+		{#if data.projects.inherited.length}
+			<p class="text-sm text-muted-foreground">
+				經由上層任務屬於：{data.projects.inherited.map((x) => x.name).join('、')}
+			</p>
+		{:else if !data.projects.attached.length}
+			<p class="text-sm text-muted-foreground">沒有掛在你所屬的專案。</p>
+		{/if}
+		{#if data.projects.attachable.length}
+			<form
+				method="post"
+				action="?/attachProject"
+				use:enhance
+				class="flex flex-wrap items-end gap-3"
+			>
+				<div class="space-y-2">
+					<Label for="attach-project">掛入專案</Label>
+					<NativeSelect.Root id="attach-project" name="projectId" required>
+						<NativeSelect.Option value="">選擇專案</NativeSelect.Option>
+						{#each data.projects.attachable as pr (pr.id)}
+							<NativeSelect.Option value={pr.id}>{pr.name}</NativeSelect.Option>
+						{/each}
+					</NativeSelect.Root>
+				</div>
+				<Button type="submit">掛入</Button>
+			</form>
+			<p class="text-xs text-muted-foreground">掛入後，專案成員都能看到這個任務與它的子任務。</p>
+		{/if}
+	</section>
+
+	<section class="space-y-3">
 		<h2 class="text-lg font-semibold">
 			子任務
 			{#if data.children.length}
@@ -198,6 +254,14 @@
 	{#if data.canDelete}
 		<DeleteTask taskId={data.task.id} />
 	{/if}
+	<ConfirmDialog
+		bind:open={() => leavingProject !== null, (v) => !v && (leavingProject = null)}
+		title="取消掛接專案「{leavingProject?.name ?? ''}」？"
+		description="任務不會被刪除；該專案的其他成員可能因此看不到它。"
+		confirmLabel="取消掛接"
+		action="?/detachProject"
+		fields={{ projectId: leavingProject?.id ?? '' }}
+	/>
 	<ConfirmDialog
 		bind:open={() => removing !== null, (v) => !v && (removing = null)}
 		title="移除上層任務「{removing?.title ?? ''}」？"

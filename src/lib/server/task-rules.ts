@@ -71,13 +71,14 @@ type Actor = { userId: string };
 type Owned = { createdBy: string; assigneeId: string | null };
 
 /**
- * D12/D14：任務本身或任一祖先的建立者／指派人可見。
- * `chain` = 該任務加上它所有祖先（由 DB 的遞迴查詢取得）。第 5 步在此加入專案成員（D11）。
+ * D12/D14/D11：任務本身或任一祖先的建立者／指派人，或「被掛在我所屬專案」者可見。
+ * `chain` = 該任務加上它所有祖先（由 DB 的遞迴查詢取得）；`viaProject` 表示該節點掛在
+ * 查詢者為成員的專案（封存不影響，D64）。
  */
-export const canView = (chain: Owned[], { userId }: Actor) =>
-	chain.some((t) => t.createdBy === userId || t.assigneeId === userId);
+export const canView = (chain: (Owned & { viaProject?: boolean })[], { userId }: Actor) =>
+	chain.some((t) => t.createdBy === userId || t.assigneeId === userId || !!t.viaProject);
 
-/** D45：建立者與指派人可編輯內容欄位（專案成員的權限待第 5 步） */
+/** D45：只有建立者與指派人可編輯內容欄位；專案成員只能看，不因成員身分取得編輯權 */
 export const canEdit = (t: Owned, { userId }: Actor) =>
 	t.createdBy === userId || t.assigneeId === userId;
 
@@ -93,7 +94,8 @@ export type TaskFilters = {
 	statuses: TaskStatus[];
 	source: 'all' | TaskSource;
 	due: 'all' | 'overdue' | 'week';
-	// 第 5 步：projectId
+	/** D43：所屬專案；在 SQL 層套用（只對我是成員的專案有效），applyFilters 不處理 */
+	projectId?: string;
 };
 
 /** 由網址參數解析；未知或不合法的值一律忽略，不丟錯 */
@@ -103,7 +105,8 @@ export const parseFilters = (params: URLSearchParams): TaskFilters => {
 	return {
 		statuses: [...new Set(params.getAll('status').filter(isStatus))],
 		source: source === 'own' || source === 'assigned' ? source : 'all',
-		due: due === 'overdue' || due === 'week' ? due : 'all'
+		due: due === 'overdue' || due === 'week' ? due : 'all',
+		projectId: params.get('project')?.slice(0, 64) || undefined
 	};
 };
 

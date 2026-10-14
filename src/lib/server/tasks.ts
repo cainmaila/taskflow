@@ -42,16 +42,23 @@ export const ensurePersonalRoot = async (db: Db, userId: string) => {
 	return (await find())!.id;
 };
 
-type Owned = { id: string; createdBy: string; assigneeId: string | null };
+type Owned = { id: string; createdBy: string; assigneeId: string | null; viaProject?: boolean };
 
-/** 任務本身加上所有祖先（D14）；個人根不在 task_parent，所以不會出現 */
-const ancestorChain = (db: Db, id: string) =>
-	db.all<Owned>(sql`
+/**
+ * 任務本身加上所有祖先（D14）；個人根不在 task_parent，所以不會出現。
+ * viaProject：該節點掛在 userId 為成員的專案（D11/D14；封存不影響，D64）。
+ */
+const ancestorChain = async (db: Db, id: string, userId: string) =>
+	(
+		await db.all<Omit<Owned, 'viaProject'> & { viaProject: number }>(sql`
 		with recursive anc(id) as (
 			select ${id} union select tp.parent_id from task_parent tp join anc on tp.child_id = anc.id
 		)
-		select t.id as id, t.created_by as createdBy, t.assignee_id as assigneeId
-		from task t where t.id in (select id from anc)`);
+		select t.id as id, t.created_by as createdBy, t.assignee_id as assigneeId,
+			exists (select 1 from project_task pt join project_member pm on pm.project_id = pt.project_id
+				where pt.task_id = t.id and pm.user_id = ${userId}) as viaProject
+		from task t where t.id in (select id from anc)`)
+	).map((r) => ({ ...r, viaProject: !!r.viaProject }));
 
 /** `descendant` 是否為 `ancestor` 本身或其子孫 */
 const isSelfOrDescendant = async (db: Db, ancestor: string, descendant: string) =>
@@ -77,7 +84,7 @@ const reachesItself = async (db: Db, childId: string) =>
 /** 取得任務並檢查可見性；個人根與不可見的任務一律視為不存在，不洩漏存在與否 */
 const loadVisible = async (db: Db, userId: string, id: string) => {
 	const t = await db.select().from(task).where(eq(task.id, id)).get();
-	if (!t || t.rootOwnerId !== null || !canView(await ancestorChain(db, id), { userId }))
+	if (!t || t.rootOwnerId !== null || !canView(await ancestorChain(db, id, userId), { userId }))
 		throw new TaskNotFoundError('找不到任務');
 	return t;
 };
@@ -116,7 +123,14 @@ const counts = {
 	// 含看不到的 parent（D51 只洩漏數量）
 	parentCount: sql<number>`(select count(*) from task_parent tp where tp.child_id = task.id)`
 };
-const listColumns = { ...getTableColumns(task), ...counts };
+export const listColumns = { ...getTableColumns(task), ...counts };
+
+/** D43：掛在 projectId 且我是該專案成員；不是成員就不會有任何列（不洩漏專案存在與否） */
+const inMyProject = (userId: string, projectId?: string) =>
+	projectId
+		? sql`exists (select 1 from project_task pt join project_member pm on pm.project_id = pt.project_id
+			where pt.task_id = task.id and pt.project_id = ${projectId} and pm.user_id = ${userId})`
+		: undefined;
 
 /** D49：頂層（沒有 parent）且歸屬者是我，或指派給我的任務 */
 export const listMyTasks = async (db: Db, userId: string, filters: TaskFilters, today: string) => {
@@ -129,7 +143,8 @@ export const listMyTasks = async (db: Db, userId: string, filters: TaskFilters, 
 				or(
 					eq(task.assigneeId, userId),
 					sql`(not exists (select 1 from task_parent tp where tp.child_id = task.id) and coalesce(${task.assigneeId}, ${task.createdBy}) = ${userId})`
-				)
+				),
+				inMyProject(userId, filters.projectId)
 			)
 		)
 		.orderBy(asc(task.dueDate), asc(task.createdAt))
@@ -160,7 +175,8 @@ export const listAssignedByMe = async (
 			and(
 				isNull(task.rootOwnerId),
 				eq(task.createdBy, userId),
-				sql`${task.assigneeId} != ${userId}`
+				sql`${task.assigneeId} != ${userId}`,
+				inMyProject(userId, filters.projectId)
 			)
 		)
 		.orderBy(asc(task.dueDate), asc(task.createdAt))
@@ -194,7 +210,8 @@ export const listParents = async (db: Db, userId: string, taskId: string) => {
 		.where(eq(taskParent.childId, taskId))
 		.all();
 	const visible: typeof parents = [];
-	for (const p of parents) if (canView(await ancestorChain(db, p.id), { userId })) visible.push(p);
+	for (const p of parents)
+		if (canView(await ancestorChain(db, p.id, userId), { userId })) visible.push(p);
 	return { visible, hiddenCount: parents.length - visible.length };
 };
 
@@ -202,10 +219,19 @@ export const listParents = async (db: Db, userId: string, taskId: string) => {
 
 const viewerIds = async (db: Db, id: string) => {
 	const ids = new Set<string>();
-	for (const t of await ancestorChain(db, id)) {
+	for (const t of await ancestorChain(db, id, '')) {
 		ids.add(t.createdBy);
 		if (t.assigneeId) ids.add(t.assigneeId);
 	}
+	// D11：祖先鏈上任一任務所掛專案的成員也看得到
+	const members = await db.all<{ userId: string }>(sql`
+		with recursive anc(id) as (
+			select ${id} union select tp.parent_id from task_parent tp join anc on tp.child_id = anc.id
+		)
+		select distinct pm.user_id as userId from project_task pt
+		join project_member pm on pm.project_id = pt.project_id
+		where pt.task_id in (select id from anc)`);
+	for (const m of members) ids.add(m.userId);
 	return ids;
 };
 
@@ -215,12 +241,15 @@ export const shareScope = async (db: Db, parentId: string, childId: string) => {
 	const ids = [...atParent].filter((u) => !atChild.has(u));
 	if (!ids.length) return [];
 	// 可見者最多是少數幾人（團隊約 15 人），遠低於 D1 的綁定參數上限
-	return db
-		.select({ id: user.id, name: user.name })
-		.from(user)
-		.where(inArray(user.id, ids))
-		.orderBy(user.name)
-		.all();
+	return (
+		db
+			.select({ id: user.id, name: user.name })
+			.from(user)
+			// 已停用的帳號不會真的看到東西，不列入提示
+			.where(and(inArray(user.id, ids), or(isNull(user.banned), eq(user.banned, false))))
+			.orderBy(user.name)
+			.all()
+	);
 };
 
 /** 寫入關聯後再檢查一次循環（D1 沒有互動式交易，併發時可能同時各插一條）；有循環就撤回 */

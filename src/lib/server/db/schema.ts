@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
 	check,
+	index,
 	integer,
 	primaryKey,
 	sqliteTable,
@@ -61,6 +62,60 @@ export const taskParent = sqliteTable(
 			.references(() => task.id, { onDelete: 'cascade' })
 	},
 	(t) => [primaryKey({ columns: [t.parentId, t.childId] })]
+);
+
+export const PROJECT_ROLES = ['owner', 'member'] as const;
+export type ProjectRole = (typeof PROJECT_ROLES)[number];
+
+export const project = sqliteTable('project', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	name: text('name').notNull(),
+	description: text('description'),
+	// D60：只封存不刪除
+	archivedAt: integer('archived_at', { mode: 'timestamp_ms' }),
+	createdBy: text('created_by')
+		.notNull()
+		.references(() => user.id),
+	createdAt: integer('created_at', { mode: 'timestamp_ms' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+export const projectMember = sqliteTable(
+	'project_member',
+	{
+		projectId: text('project_id')
+			.notNull()
+			.references(() => project.id, { onDelete: 'cascade' }),
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id),
+		role: text('role', { enum: PROJECT_ROLES }).notNull().default('member')
+	},
+	(t) => [
+		primaryKey({ columns: [t.projectId, t.userId] }),
+		index('project_member_user_id_idx').on(t.userId),
+		check('project_member_role_check', sql`${t.role} in ('owner','member')`)
+	]
+);
+
+// 任務與專案多對多（D5/D6）；任務刪除時關聯跟著刪
+export const projectTask = sqliteTable(
+	'project_task',
+	{
+		projectId: text('project_id')
+			.notNull()
+			.references(() => project.id, { onDelete: 'cascade' }),
+		taskId: text('task_id')
+			.notNull()
+			.references(() => task.id, { onDelete: 'cascade' })
+	},
+	(t) => [
+		primaryKey({ columns: [t.projectId, t.taskId] }),
+		index('project_task_task_id_idx').on(t.taskId)
+	]
 );
 
 export const invitation = sqliteTable('invitation', {
