@@ -123,7 +123,14 @@ const counts = {
 	// 含看不到的 parent（D51 只洩漏數量）
 	parentCount: sql<number>`(select count(*) from task_parent tp where tp.child_id = task.id)`
 };
-const listColumns = { ...getTableColumns(task), ...counts };
+export const listColumns = { ...getTableColumns(task), ...counts };
+
+/** D43：掛在 projectId 且我是該專案成員；不是成員就不會有任何列（不洩漏專案存在與否） */
+const inMyProject = (userId: string, projectId?: string) =>
+	projectId
+		? sql`exists (select 1 from project_task pt join project_member pm on pm.project_id = pt.project_id
+			where pt.task_id = task.id and pt.project_id = ${projectId} and pm.user_id = ${userId})`
+		: undefined;
 
 /** D49：頂層（沒有 parent）且歸屬者是我，或指派給我的任務 */
 export const listMyTasks = async (db: Db, userId: string, filters: TaskFilters, today: string) => {
@@ -136,7 +143,8 @@ export const listMyTasks = async (db: Db, userId: string, filters: TaskFilters, 
 				or(
 					eq(task.assigneeId, userId),
 					sql`(not exists (select 1 from task_parent tp where tp.child_id = task.id) and coalesce(${task.assigneeId}, ${task.createdBy}) = ${userId})`
-				)
+				),
+				inMyProject(userId, filters.projectId)
 			)
 		)
 		.orderBy(asc(task.dueDate), asc(task.createdAt))
@@ -167,7 +175,8 @@ export const listAssignedByMe = async (
 			and(
 				isNull(task.rootOwnerId),
 				eq(task.createdBy, userId),
-				sql`${task.assigneeId} != ${userId}`
+				sql`${task.assigneeId} != ${userId}`,
+				inMyProject(userId, filters.projectId)
 			)
 		)
 		.orderBy(asc(task.dueDate), asc(task.createdAt))

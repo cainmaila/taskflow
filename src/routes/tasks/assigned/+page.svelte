@@ -13,7 +13,12 @@
 <main class="mx-auto max-w-3xl space-y-6 p-4">
 	<h1 class="text-2xl font-semibold">我指派給別人的</h1>
 
-	<FilterBar filters={data.filters} showSource={false} clearHref={resolve('/tasks/assigned')} />
+	<FilterBar
+		filters={data.filters}
+		projects={data.projects}
+		showSource={false}
+		clearHref={resolve('/tasks/assigned')}
+	/>
 
 	<Card.Root>
 		<Card.Content class="divide-y">

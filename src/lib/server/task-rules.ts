@@ -94,7 +94,8 @@ export type TaskFilters = {
 	statuses: TaskStatus[];
 	source: 'all' | TaskSource;
 	due: 'all' | 'overdue' | 'week';
-	// 第 5 步：projectId
+	/** D43：所屬專案；在 SQL 層套用（只對我是成員的專案有效），applyFilters 不處理 */
+	projectId?: string;
 };
 
 /** 由網址參數解析；未知或不合法的值一律忽略，不丟錯 */
@@ -104,7 +105,8 @@ export const parseFilters = (params: URLSearchParams): TaskFilters => {
 	return {
 		statuses: [...new Set(params.getAll('status').filter(isStatus))],
 		source: source === 'own' || source === 'assigned' ? source : 'all',
-		due: due === 'overdue' || due === 'week' ? due : 'all'
+		due: due === 'overdue' || due === 'week' ? due : 'all',
+		projectId: params.get('project')?.slice(0, 64) || undefined
 	};
 };
 

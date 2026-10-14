@@ -2,6 +2,8 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import { env } from 'cloudflare:workers';
 import { getDb } from '#lib/server/db/index.ts';
 import { listMembers } from '#lib/server/members.ts';
+import { projectFailure } from '#lib/server/project-http.ts';
+import { attachTask, detachTask, listTaskProjects } from '#lib/server/projects.ts';
 import { canAssign, todayISO } from '#lib/server/task-rules.ts';
 import {
 	attachChild,
@@ -29,6 +31,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		return {
 			task,
 			parents: await listParents(db, me.id, params.id),
+			projects: await listTaskProjects(db, me.id, params.id),
 			children: await listChildren(db, me.id, params.id),
 			today: todayISO(),
 			canDelete: canChangeAssignee,
@@ -110,6 +113,38 @@ export const actions: Actions = {
 			return failure(e);
 		}
 		return { detached: true };
+	},
+	attachProject: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await attachTask(
+				getDb(env.DB),
+				{ userId: me.id, systemRole: me.role },
+				form.get('projectId')?.toString() ?? '',
+				params.id
+			);
+		} catch (e) {
+			return projectFailure(e);
+		}
+		return { projectAttached: true };
+	},
+	detachProject: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await detachTask(
+				getDb(env.DB),
+				{ userId: me.id, systemRole: me.role },
+				form.get('projectId')?.toString() ?? '',
+				params.id
+			);
+		} catch (e) {
+			return projectFailure(e);
+		}
+		return { projectDetached: true };
 	},
 	delete: async ({ request, locals, params }) => {
 		const me = locals.user;

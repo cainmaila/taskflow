@@ -141,6 +141,13 @@ describe('parseFilters', () => {
 	});
 });
 
+describe('parseFilters project (D43)', () => {
+	it('reads project id, ignores empty', () => {
+		expect(parseFilters(new URLSearchParams('project=abc')).projectId).toBe('abc');
+		expect(parseFilters(new URLSearchParams('project=')).projectId).toBeUndefined();
+	});
+});
+
 describe('applyFilters', () => {
 	const rows = [
 		{ id: 1, dueDate: '2026-10-10', status: 'todo', source: 'own' as const },

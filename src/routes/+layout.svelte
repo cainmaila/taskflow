@@ -20,6 +20,7 @@
 			<a href={resolve('/tasks/assigned')} class="text-muted-foreground hover:text-foreground"
 				>我指派的</a
 			>
+			<a href={resolve('/projects')} class="text-muted-foreground hover:text-foreground">專案</a>
 			<a href={resolve('/members')} class="text-muted-foreground hover:text-foreground">成員</a>
 			<span class="ml-auto text-sm text-muted-foreground">{data.user.name}</span>
 			<form method="post" action="/members?/signOut" use:enhance>

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { project, projectMember, projectTask, task, user, type ProjectRole } from './db/schema';
 import {
@@ -13,7 +13,7 @@ import {
 	validateDescription,
 	validateName
 } from './project-rules';
-import { getTask, TaskNotFoundError } from './tasks';
+import { getTask, listColumns, TaskNotFoundError } from './tasks';
 
 export { ProjectError, ProjectForbiddenError, ProjectNotFoundError };
 
@@ -149,7 +149,7 @@ export const addMember = async (
 	a: ProjectActor,
 	projectId: string,
 	userId: string,
-	role: ProjectRole = 'member'
+	role: unknown = 'member'
 ) => {
 	const p = await loadManageable(db, a, projectId);
 	assertWritable(p);
@@ -164,7 +164,7 @@ export const addMember = async (
 	}
 };
 
-const LAST_OWNER = '專案至少要保留一位 owner，請先指定另一位 owner';
+const LAST_OWNER = '專案至少要保留一位管理者，請先指定另一位管理者';
 
 /**
  * D62：單一 SQL 陳述式同時檢查「是否為最後一個 owner」並套用變更。
@@ -185,7 +185,7 @@ export const setMemberRole = async (
 	a: ProjectActor,
 	projectId: string,
 	userId: string,
-	role: ProjectRole
+	role: unknown
 ) => {
 	const p = await loadManageable(db, a, projectId);
 	assertWritable(p);
@@ -231,15 +231,96 @@ export const detachTask = async (db: Db, a: ProjectActor, projectId: string, tas
 	if (!res.meta.changes) throw new ProjectError('任務不在這個專案裡');
 };
 
-/** D6：只列明確掛在該專案的任務；專案成員因此能看到它們（D11） */
+/** D6：只列明確掛在該專案的任務；專案成員因此能看到它們（D11）。canDetach 依 D59/D64 由 server 算好 */
 export const listProjectTasks = async (db: Db, a: ProjectActor, projectId: string) => {
-	await loadViewable(db, a, projectId);
-	return db
-		.select({ task })
+	const { p, role } = await loadViewable(db, a, projectId);
+	const rows = await db
+		.select(listColumns)
 		.from(projectTask)
 		.innerJoin(task, eq(task.id, projectTask.taskId))
 		.where(eq(projectTask.projectId, projectId))
 		.orderBy(asc(task.dueDate), asc(task.createdAt))
-		.all()
-		.then((rows) => rows.map((r) => r.task));
+		.all();
+	return rows.map((t) => ({
+		...t,
+		canDetach: !p.archivedAt && canAttachTask(t, role, a.userId)
+	}));
+};
+
+/** 任務詳情的「所屬專案」：只列我是成員的專案（其餘不洩漏，D63），並算好我能不能掛／取消 */
+export const listTaskProjects = async (db: Db, userId: string, taskId: string) => {
+	const t = await getTask(db, userId, taskId).catch((e) => {
+		if (e instanceof TaskNotFoundError) throw new ProjectNotFoundError('找不到任務');
+		throw e;
+	});
+	const mine = await db
+		.select({
+			id: project.id,
+			name: project.name,
+			archivedAt: project.archivedAt,
+			role: projectMember.role,
+			attached: sql<number>`exists (select 1 from project_task pt where pt.project_id = project.id and pt.task_id = ${taskId})`
+		})
+		.from(projectMember)
+		.innerJoin(project, eq(project.id, projectMember.projectId))
+		.where(eq(projectMember.userId, userId))
+		.orderBy(asc(project.name))
+		.all();
+	const mayAttach = t.createdBy === userId || t.assigneeId === userId;
+	// 經由上層任務而屬於的專案（我是成員、且不是直接掛在這個任務上）
+	const inherited = await db.all<{ id: string; name: string }>(sql`
+		with recursive anc(id) as (
+			select tp.parent_id from task_parent tp where tp.child_id = ${taskId}
+			union select tp.parent_id from task_parent tp join anc on tp.child_id = anc.id
+		)
+		select distinct p.id as id, p.name as name from project_task pt
+		join project p on p.id = pt.project_id
+		join project_member pm on pm.project_id = p.id and pm.user_id = ${userId}
+		where pt.task_id in (select id from anc)
+		and not exists (select 1 from project_task d where d.project_id = p.id and d.task_id = ${taskId})
+		order by p.name`);
+	return {
+		inherited,
+		attached: mine
+			.filter((p) => p.attached)
+			.map((p) => ({
+				id: p.id,
+				name: p.name,
+				archived: !!p.archivedAt,
+				canDetach: mayAttach && !p.archivedAt
+			})),
+		attachable: mayAttach
+			? mine.filter((p) => !p.attached && !p.archivedAt).map((p) => ({ id: p.id, name: p.name }))
+			: []
+	};
+};
+
+/** 篩選選單用：我是成員的專案（含封存，因為封存專案的任務仍可篩選） */
+export const listMemberProjects = (db: Db, userId: string) =>
+	db
+		.select({
+			id: project.id,
+			name: project.name,
+			archived: sql<number>`project.archived_at is not null`
+		})
+		.from(projectMember)
+		.innerJoin(project, eq(project.id, projectMember.projectId))
+		.where(eq(projectMember.userId, userId))
+		.orderBy(asc(project.name))
+		.all();
+
+/** 可加入專案的人：未停用、尚不是成員；需管理權限 */
+export const listAddableUsers = async (db: Db, a: ProjectActor, projectId: string) => {
+	await loadManageable(db, a, projectId);
+	return db
+		.select({ id: user.id, name: user.name, email: user.email })
+		.from(user)
+		.where(
+			and(
+				or(isNull(user.banned), eq(user.banned, false)),
+				sql`not exists (select 1 from project_member pm where pm.project_id = ${projectId} and pm.user_id = user.id)`
+			)
+		)
+		.orderBy(asc(user.name))
+		.all();
 };

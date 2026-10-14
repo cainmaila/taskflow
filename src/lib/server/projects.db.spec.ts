@@ -8,7 +8,10 @@ import {
 	createProject,
 	detachTask,
 	getProject,
+	listAddableUsers,
+	listMemberProjects,
 	listMyProjects,
+	listTaskProjects,
 	listProjectTasks,
 	ProjectError,
 	ProjectForbiddenError,
@@ -24,11 +27,13 @@ import {
 	createTask,
 	deleteTask,
 	getTask,
+	listMyTasks,
 	listParents,
 	shareScope,
 	TaskNotFoundError,
 	updateTask
 } from './tasks';
+import type { TaskFilters } from './task-rules';
 import { createTestDb } from './test-db';
 
 let t: Awaited<ReturnType<typeof createTestDb>>;
@@ -134,7 +139,7 @@ describe('members (D58, D62)', () => {
 
 	it('last owner cannot leave or be demoted; works once another owner exists', async () => {
 		const id = await mkProject();
-		await expect(removeMember(t.db, mgr, id, 'mgr')).rejects.toThrow('至少');
+		await expect(removeMember(t.db, mgr, id, 'mgr')).rejects.toThrow('至少要保留一位管理者');
 		await expect(setMemberRole(t.db, mgr, id, 'mgr', 'member')).rejects.toThrow('至少');
 		expect(await roleOf(id, 'mgr')).toBe('owner');
 		await setMemberRole(t.db, mgr, id, 'mem', 'owner');
@@ -325,5 +330,93 @@ describe('visibility through projects (D11/D14)', () => {
 		await deleteTask(t.db, 'mem', a);
 		expect(await t.db.select().from(projectTask).all()).toEqual([]);
 		expect(await t.db.select().from(project).all()).toHaveLength(1);
+	});
+});
+
+describe('UI support queries', () => {
+	it('listTaskProjects lists only my projects and flags attach rights', async () => {
+		const id = await mkProject('Mine');
+		const secret = await createProject(t.db, admin, { name: 'Secret' });
+		const tk = await mkTask('mem');
+		await attachTask(t.db, mem, id, tk);
+		await addMember(t.db, admin, secret, 'out'); // mem 不是 Secret 的成員
+		const view = await listTaskProjects(t.db, 'mem', tk);
+		expect(view.attached).toEqual([{ id, name: 'Mine', archived: false, canDetach: true }]);
+		expect(view.attachable).toEqual([]);
+		// mgr 因專案看得到任務，但不是建立者／指派人：看得到專案、不能操作
+		const m = await listTaskProjects(t.db, 'mgr', tk);
+		expect(m.attached).toMatchObject([{ canDetach: false }]);
+		expect(m.attachable).toEqual([]);
+		// 封存的專案不可再掛、也不可取消
+		const other = await createProject(t.db, mgr, { name: 'Other' });
+		await addMember(t.db, mgr, other, 'mem');
+		expect((await listTaskProjects(t.db, 'mem', tk)).attachable).toEqual([
+			{ id: other, name: 'Other' }
+		]);
+		await archiveProject(t.db, mgr, id);
+		const after = await listTaskProjects(t.db, 'mem', tk);
+		expect(after.attached).toMatchObject([{ archived: true, canDetach: false }]);
+		await expect(listTaskProjects(t.db, 'out', tk)).rejects.toThrow(ProjectNotFoundError);
+	});
+
+	it('listTaskProjects.inherited: member projects of ancestors, not direct, not others', async () => {
+		const id = await mkProject('Mine');
+		const secret = await createProject(t.db, admin, { name: 'Secret' });
+		const parent = await mkTask('mem', 'Parent');
+		await attachTask(t.db, mem, id, parent);
+		await t.db.insert(projectTask).values({ projectId: secret, taskId: parent }); // mem 不是 Secret 成員
+		const child = await mkTask('mem', 'Child', parent);
+		const grand = await mkTask('mem', 'Grand', child);
+		expect((await listTaskProjects(t.db, 'mem', grand)).inherited).toEqual([{ id, name: 'Mine' }]);
+		expect((await listTaskProjects(t.db, 'mem', grand)).attached).toEqual([]);
+		// 直接掛上後，不再算「經由上層」
+		await attachTask(t.db, mem, id, grand);
+		expect((await listTaskProjects(t.db, 'mem', grand)).inherited).toEqual([]);
+		expect((await listTaskProjects(t.db, 'mem', parent)).inherited).toEqual([]);
+	});
+
+	it('listProjectTasks flags canDetach per row', async () => {
+		const id = await mkProject();
+		const mine = await mkTask('mem', 'Mine');
+		await attachTask(t.db, mem, id, mine);
+		expect((await listProjectTasks(t.db, mem, id))[0]).toMatchObject({
+			canDetach: true,
+			childCount: 0
+		});
+		expect((await listProjectTasks(t.db, mgr, id))[0].canDetach).toBe(false);
+		await archiveProject(t.db, mgr, id);
+		expect((await listProjectTasks(t.db, mem, id))[0].canDetach).toBe(false);
+	});
+
+	it('listAddableUsers: not banned, not already members, manage only', async () => {
+		const id = await mkProject();
+		expect((await listAddableUsers(t.db, mgr, id)).map((u) => u.id).sort()).toEqual(['adm', 'out']);
+		await expect(listAddableUsers(t.db, mem, id)).rejects.toThrow(ProjectForbiddenError);
+		await expect(listAddableUsers(t.db, out, id)).rejects.toThrow(ProjectNotFoundError);
+	});
+
+	it('listMemberProjects includes archived but only my memberships', async () => {
+		const id = await mkProject();
+		await createProject(t.db, admin, { name: 'NotMine' });
+		await archiveProject(t.db, mgr, id);
+		expect((await listMemberProjects(t.db, 'mem')).map((p) => p.name)).toEqual(['P']);
+	});
+
+	it('project filter on my tasks applies only to projects I belong to (D43)', async () => {
+		const id = await mkProject();
+		const inP = await mkTask('mem', 'InP');
+		await mkTask('mem', 'NotInP');
+		await attachTask(t.db, mem, id, inP);
+		const base: TaskFilters = { statuses: [], source: 'all', due: 'all' };
+		const today = '2026-10-12';
+		const r = await listMyTasks(t.db, 'mem', { ...base, projectId: id }, today);
+		expect(r.active.map((x) => x.title)).toEqual(['InP']);
+		// 不是成員：即使任務是自己的、專案存在，也沒有結果
+		const secret = await createProject(t.db, admin, { name: 'Secret' });
+		await t.db.insert(projectTask).values({ projectId: secret, taskId: inP });
+		expect((await listMyTasks(t.db, 'mem', { ...base, projectId: secret }, today)).active).toEqual(
+			[]
+		);
+		expect((await listMyTasks(t.db, 'mem', base, today)).active).toHaveLength(2);
 	});
 });
