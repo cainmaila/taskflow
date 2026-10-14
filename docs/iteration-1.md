@@ -57,9 +57,10 @@
 2. 帳號（已完成）：角色欄位、seed 腳本、邀請連結、停用。個人根不在 seed／接受邀請時建立，改為第一次進「我的任務」時懶建立（D41）。
 3. 任務核心（已實作，待 review）：task／task_parent 表（移除 priority）、懶建立個人根（D41，個人根 due_date 豁免見 D34）、「我的任務」清單與篩選（狀態／來源／到期，D42–D43；專案篩選待第 5 步）、快速新增與 `/tasks/[id]` 詳情編輯（D44–D46）、Markdown 消毒渲染。task_parent 僅建表並在建立任務時寫入「個人根→任務」，循環檢查與子任務 UI 屬第 4 步。
 4. DAG（已實作，待 review）：task_parent 只存真實 parent（D49，migration 0005 移除舊的根關聯並加 DB 護欄）、遞迴 CTE 可見性（D14）、循環檢查與寫入後複查（D3）、掛／移 parent（D50）與分享範圍提示（D15）、逐層載入子任務與 n/m（D52）、看不到的 parent 只顯示數量（D51）、刪除二選一（D53–D55）、「我指派給別人的」清單。
-5. 專案：project、成員、任務掛專案、可見性查詢（含向下傳遞）。
+5. 專案（已實作，待 review）：project／project_member／project_task（migration 0007）、成員角色 owner／member、掛接權限、封存、專案感知的可見性（D56–D64）、`/projects`、`/projects/[id]`、任務詳情「所屬專案」區、`/tasks` 專案篩選。待決：成員自行退出專案、被刪任務在專案時子任務是否繼承專案掛接（D53）。
 6. 擱置與 blocker。
 7. 留言串。
+8. 上線：建立遠端 D1、填 `wrangler.jsonc` 的 `database_id`、套用 migration、遠端 seed 管理員、設 production secrets 與 `ORIGIN`、`wrangler deploy`（每個動到遠端的指令先跟使用者確認）。
 
 每一步都用 TDD 先寫循環檢查與可見性的測試，這兩處最容易出錯、也最不能出錯。
 
