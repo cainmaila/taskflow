@@ -395,7 +395,7 @@ describe('done gate (D66)', () => {
 		const a = await mk('u1', 'A');
 		const b = await mk('u1', 'B', a);
 		const c = await mk('u1', 'C', a);
-		await mk('u1', 'D', b); // 孫任務不算
+		const d = await mk('u1', 'D', b); // 孫任務不算
 		await expect(updateTask(t.db, 'u1', a, { status: 'done' })).rejects.toThrow(
 			'還有 2 個子任務未完成'
 		);
@@ -403,7 +403,8 @@ describe('done gate (D66)', () => {
 		await expect(updateTask(t.db, 'u1', a, { status: 'done' })).rejects.toThrow(
 			'還有 1 個子任務未完成'
 		);
-		await t.db.update(task).set({ status: 'done' }).where(eq(task.id, b));
+		await updateTask(t.db, 'u1', d, { status: 'done' });
+		await updateTask(t.db, 'u1', b, { status: 'done' });
 		await updateTask(t.db, 'u1', a, { status: 'done' });
 		expect((await getTask(t.db, 'u1', a)).status).toBe('done');
 	});
@@ -415,5 +416,6 @@ describe('done gate (D66)', () => {
 		expect((await getTask(t.db, 'u1', b)).status).not.toBe('done');
 		expect((await getTask(t.db, 'u1', a)).status).toBe('done');
 		await updateTask(t.db, 'u1', a, { title: 'A2', status: 'done' }); // 已完成再存不重檢
+		expect(await getTask(t.db, 'u1', a)).toMatchObject({ title: 'A2', status: 'done' });
 	});
 });
