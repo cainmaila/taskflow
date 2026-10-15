@@ -349,6 +349,14 @@ export const updateTask = async (db: Db, userId: string, id: string, patch: Task
 	}
 	if (patch.status !== undefined) {
 		if (!isStatus(patch.status)) throw new TaskError('狀態不正確');
+		if (patch.status === 'done' && t.status !== 'done') {
+			// D66：只擋標記完成那一刻；含看不到的子任務，只洩漏數量
+			// shortcut: 檢查與寫入非原子，併發掛上子任務可漏過，出問題再併入 update 的 not exists
+			const [{ n }] = await db.all<{ n: number }>(sql`
+				select count(*) as n from task_parent tp join task c on c.id = tp.child_id
+				where tp.parent_id = ${id} and c.status != 'done'`);
+			if (n > 0) throw new TaskError(`還有 ${n} 個子任務未完成`);
+		}
 		set.status = patch.status as TaskStatus;
 	}
 	const startDate =

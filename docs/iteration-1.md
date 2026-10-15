@@ -16,7 +16,8 @@
 - 只有 due_date 時以里程碑顯示。
 - 包含關係為多 parent 的 DAG，禁止循環；每人有不可刪除的個人根。
 - 進度手動，parent 只顯示「子任務 n/m 完成」。
-- 擱置：blocker 清單選填，非空即必為擱置；blocker 完成後自動移出清單，狀態不自動恢復。
+- 擱置只是一般狀態；blocker 延後（D65）。
+- 子任務全部完成，父任務才能標記完成（D66）。
 
 **專案**（D5–D6、D9–D12）
 
@@ -37,17 +38,17 @@
 
 ## 資料模型草稿
 
-| 表                  | 重點欄位                                                                                                                                     |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| user（better-auth） | role（system_admin／manager／member）、disabled_at                                                                                           |
-| invitation          | email、token、expires_at、used_at、invited_by                                                                                                |
-| task                | id、title、description、status、assignee_id、start_date、due_date（個人根可空，其餘必填，見 D34）、created_by、root_owner_id（僅個人根有值） |
-| task_parent         | parent_id、child_id（複合主鍵，寫入前做循環檢查；只存真正的 parent，個人根不會出現，D49）                                                    |
-| task_blocker        | task_id、blocker_id（寫入前做循環檢查）                                                                                                      |
-| project             | id、name                                                                                                                                     |
-| project_member      | project_id、user_id                                                                                                                          |
-| project_task        | project_id、task_id                                                                                                                          |
-| comment             | id、task_id、author_id、body、created_at、edited_at                                                                                          |
+| 表                        | 重點欄位                                                                                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| user（better-auth）       | role（system_admin／manager／member）、disabled_at                                                                                           |
+| invitation                | email、token、expires_at、used_at、invited_by                                                                                                |
+| task                      | id、title、description、status、assignee_id、start_date、due_date（個人根可空，其餘必填，見 D34）、created_by、root_owner_id（僅個人根有值） |
+| task_parent               | parent_id、child_id（複合主鍵，寫入前做循環檢查；只存真正的 parent，個人根不會出現，D49）                                                    |
+| task_blocker（延後，D65） | task_id、blocker_id（寫入前做循環檢查）                                                                                                      |
+| project                   | id、name                                                                                                                                     |
+| project_member            | project_id、user_id                                                                                                                          |
+| project_task              | project_id、task_id                                                                                                                          |
+| comment                   | id、task_id、author_id、body、created_at、edited_at                                                                                          |
 
 可見性查詢用 SQLite recursive CTE 往上找祖先（D1 支援）。
 
@@ -58,7 +59,7 @@
 3. 任務核心（已實作，待 review）：task／task_parent 表（移除 priority）、懶建立個人根（D41，個人根 due_date 豁免見 D34）、「我的任務」清單與篩選（狀態／來源／到期，D42–D43；專案篩選待第 5 步）、快速新增與 `/tasks/[id]` 詳情編輯（D44–D46）、Markdown 消毒渲染。task_parent 僅建表並在建立任務時寫入「個人根→任務」，循環檢查與子任務 UI 屬第 4 步。
 4. DAG（已實作，待 review）：task_parent 只存真實 parent（D49，migration 0005 移除舊的根關聯並加 DB 護欄）、遞迴 CTE 可見性（D14）、循環檢查與寫入後複查（D3）、掛／移 parent（D50）與分享範圍提示（D15）、逐層載入子任務與 n/m（D52）、看不到的 parent 只顯示數量（D51）、刪除二選一（D53–D55）、「我指派給別人的」清單。
 5. 專案（已實作，待 review）：project／project_member／project_task（migration 0007）、成員角色 owner／member、掛接權限、封存、專案感知的可見性（D56–D64）、`/projects`、`/projects/[id]`、任務詳情「所屬專案」區、`/tasks` 專案篩選。待決：成員自行退出專案、被刪任務在專案時子任務是否繼承專案掛接（D53）。
-6. 擱置與 blocker。
+6. 父任務完成檢查（D66）；blocker 延後（D65）。
 7. 留言串。
 8. 上線：建立遠端 D1、填 `wrangler.jsonc` 的 `database_id`、套用 migration、遠端 seed 管理員、設 production secrets 與 `ORIGIN`、`wrangler deploy`（每個動到遠端的指令先跟使用者確認）。
 
@@ -67,6 +68,5 @@
 ## 待釐清（實作前要定）
 
 - DAG 展開的深度或數量上限（Workers CPU 與 D1 查詢限制）。
-- 選 blocker 時只能選自己看得到的任務；被擋任務的可見者看不到 blocker 時如何顯示。
 - 停用成員在專案成員名單與指派選單中的顯示。
 - 把已被分享的任務從 parent 移除後，原本因此取得可見性的人如何處理（直接失去可見性即可，需確認）。
