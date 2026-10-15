@@ -15,7 +15,7 @@
 
 <svelte:head><title>專案 - Taskflow</title></svelte:head>
 
-<main class="mx-auto max-w-3xl space-y-6 p-4">
+<main class="mx-auto max-w-4xl space-y-6 px-4 py-6 md:px-8 md:py-10">
 	<div class="flex items-center justify-between gap-3">
 		<h1 class="text-2xl font-semibold">專案</h1>
 		<Button

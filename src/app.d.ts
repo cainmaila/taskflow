@@ -13,7 +13,9 @@ declare global {
 
 		// interface Error {}
 		// interface PageData {}
-		// interface PageState {}
+		interface PageState {
+			selected?: import('./routes/tasks/[id]/$types').PageData;
+		}
 		// interface Platform {}
 	}
 }

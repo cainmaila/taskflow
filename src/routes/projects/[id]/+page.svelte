@@ -41,7 +41,7 @@
 
 <svelte:head><title>{p.name} - Taskflow</title></svelte:head>
 
-<main class="mx-auto max-w-3xl space-y-6 p-4">
+<main class="mx-auto max-w-4xl space-y-6 px-4 py-6 md:px-8 md:py-10">
 	<a href={resolve('/projects')} class="text-sm text-muted-foreground hover:text-foreground"
 		>← 專案</a
 	>

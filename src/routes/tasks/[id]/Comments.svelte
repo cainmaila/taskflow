@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type ActionResult } from '$app/forms';
 	import * as Alert from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
@@ -18,9 +18,13 @@
 	};
 	type CommentError = { kind: 'add' | 'edit' | 'delete'; commentId: string };
 	let {
+		taskId,
 		comments,
-		form
+		form,
+		onresult
 	}: {
+		taskId: string;
+		onresult: (result: ActionResult, form?: HTMLFormElement) => Promise<void>;
 		comments: Item[];
 		form?: { message?: string; commentError?: CommentError } | null;
 	} = $props();
@@ -38,7 +42,7 @@
 </script>
 
 <section class="space-y-3">
-	<h2 class="text-lg font-semibold">
+	<h2 class="text-base font-semibold">
 		留言
 		{#if comments.length}<span class="text-sm font-normal text-muted-foreground"
 				>{comments.length} 則</span
@@ -51,7 +55,7 @@
 	{/if}
 	<ul class="space-y-3">
 		{#each comments as c (c.id)}
-			<li class="space-y-2 rounded-md border p-3">
+			<li class="space-y-2 rounded-xl bg-card p-3.5 ring-1 ring-foreground/10">
 				<div class="flex flex-wrap items-center gap-2 text-sm">
 					<span class="font-medium">{c.authorName}</span>
 					<span class="text-muted-foreground">{fmt(c.createdAt)}</span>
@@ -71,11 +75,11 @@
 				{#if editingId === c.id}
 					<form
 						method="post"
-						action="?/editComment"
+						action="/tasks/{taskId}?/editComment"
 						use:enhance={() =>
-							async ({ result, update }) => {
+							async ({ result }) => {
 								if (result.type === 'success') editingId = null;
-								await update({ reset: false });
+								await onresult(result);
 							}}
 						class="space-y-2"
 					>
@@ -94,7 +98,7 @@
 						</div>
 					</form>
 				{:else}
-					<div class="prose max-w-none dark:prose-invert">
+					<div class="prose prose-sm max-w-none dark:prose-invert">
 						<!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown 已消毒 -->
 						{@html renderMarkdown(c.body)}
 					</div>
@@ -104,7 +108,14 @@
 			<li class="text-sm text-muted-foreground">還沒有留言。</li>
 		{/each}
 	</ul>
-	<form method="post" action="?/addComment" use:enhance class="space-y-2">
+	<form
+		method="post"
+		action="/tasks/{taskId}?/addComment"
+		use:enhance={() =>
+			async ({ result, formElement }) =>
+				onresult(result, formElement)}
+		class="space-y-2"
+	>
 		<Label for="comment-body">新增留言（Markdown）</Label>
 		<Textarea id="comment-body" name="body" required maxlength={5000} rows={3} />
 		{#if err('add')}
@@ -121,6 +132,7 @@
 	title="刪除這則留言？"
 	description="刪除後無法復原。"
 	confirmLabel="刪除"
-	action="?/deleteComment"
+	action="/tasks/{taskId}?/deleteComment"
 	fields={{ commentId: deleting?.id ?? '' }}
+	{onresult}
 />

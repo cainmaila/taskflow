@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type ActionResult } from '$app/forms';
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 
@@ -11,7 +11,8 @@
 		confirmLabel = '確定',
 		action,
 		fields = {},
-		onconfirm
+		onconfirm,
+		onresult
 	}: {
 		open?: boolean;
 		title: string;
@@ -20,6 +21,8 @@
 		action?: string;
 		fields?: Record<string, string>;
 		onconfirm?: () => void | Promise<void>;
+		// 面板內表單的 action 路徑與目前頁不同，結果要自己處理（預設交給 enhance 的 update）
+		onresult?: (result: ActionResult) => Promise<void>;
 	} = $props();
 
 	let busy = $state(false);
@@ -39,10 +42,10 @@
 					{action}
 					use:enhance={() => {
 						busy = true;
-						return async ({ update }) => {
+						return async ({ update, result }) => {
 							open = false;
 							try {
-								await update();
+								await (onresult ? onresult(result) : update());
 							} finally {
 								busy = false;
 							}
