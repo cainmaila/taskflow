@@ -389,3 +389,33 @@ describe('delete plan (D53-D55)', () => {
 		expect(await t.db.select().from(task).all()).toHaveLength(2);
 	});
 });
+
+describe('done gate (D66)', () => {
+	it('rejects done while direct children are unfinished; allows once all done', async () => {
+		const a = await mk('u1', 'A');
+		const b = await mk('u1', 'B', a);
+		const c = await mk('u1', 'C', a);
+		const d = await mk('u1', 'D', b); // 孫任務不算
+		await expect(updateTask(t.db, 'u1', a, { status: 'done' })).rejects.toThrow(
+			'還有 2 個子任務未完成'
+		);
+		await updateTask(t.db, 'u1', c, { status: 'done' });
+		await expect(updateTask(t.db, 'u1', a, { status: 'done' })).rejects.toThrow(
+			'還有 1 個子任務未完成'
+		);
+		await updateTask(t.db, 'u1', d, { status: 'done' });
+		await updateTask(t.db, 'u1', b, { status: 'done' });
+		await updateTask(t.db, 'u1', a, { status: 'done' });
+		expect((await getTask(t.db, 'u1', a)).status).toBe('done');
+	});
+
+	it('allows done without children; later children do not touch a done parent', async () => {
+		const a = await mk('u1', 'A');
+		await updateTask(t.db, 'u1', a, { status: 'done' });
+		const b = await mk('u1', 'B', a);
+		expect((await getTask(t.db, 'u1', b)).status).not.toBe('done');
+		expect((await getTask(t.db, 'u1', a)).status).toBe('done');
+		await updateTask(t.db, 'u1', a, { title: 'A2', status: 'done' }); // 已完成再存不重檢
+		expect(await getTask(t.db, 'u1', a)).toMatchObject({ title: 'A2', status: 'done' });
+	});
+});
