@@ -431,3 +431,11 @@
 ## D71：停用成員的留言照常顯示
 
 - 延續 D32（資料保留）：留言內容與作者名字照常顯示，不加「已停用」標記。停用者無法登入，自然不能再編輯；system_admin 仍可刪除。
+
+## D72：上線方式（workers.dev、單一部署）
+
+- 網址用 `https://taskflow.cainmaila.workers.dev`，自訂網域之後再加（要改 `ORIGIN`）。
+- `ORIGIN` 放 `wrangler.jsonc` 的 `vars`（非機密、進版控）；`BETTER_AUTH_SECRET` 用 `wrangler secret put`，不進版控。
+- `database_id` 直接提交（非機密）；自架者需自行 `wrangler d1 create` 並替換。
+- `pnpm build` 時 SvelteKit 會驗證 `ORIGIN`、`BETTER_AUTH_SECRET` 有設定（值不會打進產物），沒有 `.env` 時要帶假值。
+- 先用 Workers Free + D1 Free。風險：scrypt 密碼雜湊與 DAG 遞迴查詢可能超過 Free 的 CPU 限制，實測有問題再升級 Workers Paid。
