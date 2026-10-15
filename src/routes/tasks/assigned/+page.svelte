@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import * as Card from '#lib/components/ui/card/index.js';
 	import FilterBar from '../FilterBar.svelte';
-	import TaskRow from '../TaskRow.svelte';
+	import PageHeader from '../PageHeader.svelte';
+	import TaskList from '../TaskList.svelte';
+	import TaskPanel from '../TaskPanel.svelte';
 	import type { PageProps } from './$types';
 
 	let { data }: PageProps = $props();
@@ -10,34 +11,26 @@
 
 <svelte:head><title>我指派給別人的 - Taskflow</title></svelte:head>
 
-<main class="mx-auto max-w-3xl space-y-6 p-4">
-	<h1 class="text-2xl font-semibold">我指派給別人的</h1>
+<main class="mx-auto max-w-4xl px-4 py-6 md:px-8 md:py-10">
+	<PageHeader title="我指派的" />
 
-	<FilterBar
-		filters={data.filters}
-		projects={data.projects}
-		showSource={false}
-		clearHref={resolve('/tasks/assigned')}
+	<div class="mb-6">
+		<FilterBar
+			filters={data.filters}
+			projects={data.projects}
+			showSource={false}
+			clearHref={resolve('/tasks/assigned')}
+		/>
+	</div>
+
+	<TaskList
+		active={data.active}
+		done={data.done}
+		today={data.today}
+		meId={data.user?.id}
+		doneOpen={data.filters.statuses.includes('done')}
+		empty="沒有符合條件的任務。"
 	/>
-
-	<Card.Root>
-		<Card.Content class="divide-y">
-			{#each data.active as t (t.id)}
-				<TaskRow {t} today={data.today} meId={data.user?.id} />
-			{:else}
-				<p class="py-3 text-sm text-muted-foreground">沒有符合條件的任務。</p>
-			{/each}
-		</Card.Content>
-	</Card.Root>
-
-	{#if data.done.length}
-		<details open={data.filters.statuses.includes('done')} class="rounded-lg border">
-			<summary class="cursor-pointer p-3 font-medium">已完成（{data.done.length}）</summary>
-			<div class="divide-y px-6">
-				{#each data.done as t (t.id)}
-					<TaskRow {t} today={data.today} meId={data.user?.id} />
-				{/each}
-			</div>
-		</details>
-	{/if}
 </main>
+
+<TaskPanel />

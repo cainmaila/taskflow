@@ -169,6 +169,9 @@ describe('permissions', () => {
 		await expect(updateTask(t.db, 'u1', id, { assigneeId: 'ghost' })).rejects.toThrow(TaskError);
 		await expect(updateTask(t.db, 'u1', id, { startDate: '2026-11-01' })).rejects.toThrow('晚於');
 		await expect(updateTask(t.db, 'u1', id, { dueDate: '' })).rejects.toThrow(TaskError);
+		// startDate: '' 視為清除（null），不是無效日期
+		await updateTask(t.db, 'u1', id, { startDate: '' });
+		expect((await getTask(t.db, 'u1', id)).startDate).toBeNull();
 		await expect(updateTask(t.db, 'u1', id, { status: 'nope' })).rejects.toThrow(TaskError);
 		await expect(updateTask(t.db, 'u1', id, { description: 'x'.repeat(20001) })).rejects.toThrow(
 			'20000'

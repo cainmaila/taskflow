@@ -4,56 +4,59 @@
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
 
+/* 強制暗色：單一 token 集（<html class="dark">）。強調色 coral 配深色字，對比 > 7:1 */
 :root {
-	--background: hsl(0 0% 100%);
-	--foreground: hsl(240 10% 3.9%);
-	--muted: hsl(240 4.8% 95.9%);
-	--muted-foreground: hsl(240 3.8% 46.1%);
-	--popover: hsl(0 0% 100%);
-	--popover-foreground: hsl(240 10% 3.9%);
-	--card: hsl(0 0% 100%);
-	--card-foreground: hsl(240 10% 3.9%);
-	--border: hsl(240 5.9% 90%);
-	--input: hsl(240 5.9% 90%);
-	--primary: hsl(240 5.9% 10%);
-	--primary-foreground: hsl(0 0% 98%);
-	--secondary: hsl(240 4.8% 95.9%);
-	--secondary-foreground: hsl(240 5.9% 10%);
-	--accent: hsl(240 4.8% 95.9%);
-	--accent-foreground: hsl(240 5.9% 10%);
-	--destructive: hsl(0 72.2% 50.6%);
-	--ring: hsl(240 10% 3.9%);
-	--radius: 0.5rem;
-}
+	color-scheme: dark;
 
-.dark {
-	--background: hsl(240 10% 3.9%);
-	--foreground: hsl(0 0% 98%);
-	--muted: hsl(240 3.7% 15.9%);
-	--muted-foreground: hsl(240 5% 64.9%);
-	--popover: hsl(240 10% 3.9%);
-	--popover-foreground: hsl(0 0% 98%);
-	--card: hsl(240 10% 3.9%);
-	--card-foreground: hsl(0 0% 98%);
-	--border: hsl(240 3.7% 15.9%);
-	--input: hsl(240 3.7% 15.9%);
-	--primary: hsl(0 0% 98%);
-	--primary-foreground: hsl(240 5.9% 10%);
-	--secondary: hsl(240 3.7% 15.9%);
-	--secondary-foreground: hsl(0 0% 98%);
-	--accent: hsl(240 3.7% 15.9%);
-	--accent-foreground: hsl(0 0% 98%);
-	--destructive: hsl(0 62.8% 30.6%);
-	--ring: hsl(240 4.9% 83.9%);
+	--background: #0f1013;
+	--foreground: #eceef2;
+	--sidebar: #0b0c0f;
+	--card: #15171c;
+	--card-foreground: #eceef2;
+	--popover: #1b1e25;
+	--popover-foreground: #eceef2;
+	--muted: #1c1f26;
+	--muted-foreground: #9ba2af;
+	--border: #272b34;
+	--input: #313642;
+	--secondary: #232730;
+	--secondary-foreground: #eceef2;
+	--accent: #232730;
+	--accent-foreground: #eceef2;
+
+	--primary: #ff7f5f;
+	--primary-hover: #ff9378;
+	--primary-press: #f0654a;
+	--primary-foreground: #1a0a06;
+	--ring: #ff9378;
+	--destructive: #ff6b81;
+
+	--status-todo: #9ba2af;
+	--status-progress: #6ab0ff;
+	--status-pending: #f5b955;
+	--status-done: #45d393;
+	--overdue: #ff6b81;
+
+	--radius: 0.625rem;
+	--shadow-pop: 0 12px 40px -8px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.06);
+
+	--ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+	--dur-fast: 120ms;
+	--dur-base: 220ms;
+	--dur-slow: 360ms;
 }
 
 @theme inline {
+	--font-sans:
+		'Inter Variable', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
 	--radius-sm: calc(var(--radius) - 4px);
 	--radius-md: calc(var(--radius) - 2px);
 	--radius-lg: var(--radius);
 	--radius-xl: calc(var(--radius) + 4px);
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
+	--color-sidebar: var(--sidebar);
 	--color-muted: var(--muted);
 	--color-muted-foreground: var(--muted-foreground);
 	--color-popover: var(--popover);
@@ -63,6 +66,8 @@
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-primary: var(--primary);
+	--color-primary-hover: var(--primary-hover);
+	--color-primary-press: var(--primary-press);
 	--color-primary-foreground: var(--primary-foreground);
 	--color-secondary: var(--secondary);
 	--color-secondary-foreground: var(--secondary-foreground);
@@ -70,13 +75,121 @@
 	--color-accent-foreground: var(--accent-foreground);
 	--color-destructive: var(--destructive);
 	--color-ring: var(--ring);
+	--color-status-todo: var(--status-todo);
+	--color-status-progress: var(--status-progress);
+	--color-status-pending: var(--status-pending);
+	--color-status-done: var(--status-done);
+	--color-overdue: var(--overdue);
+	--shadow-pop: var(--shadow-pop);
+	--ease-out: var(--ease-out);
+	--ease-spring: var(--ease-spring);
 }
 
 @layer base {
 	* {
 		@apply border-border;
 	}
+	html {
+		-webkit-text-size-adjust: 100%;
+		text-rendering: optimizeLegibility;
+	}
 	body {
-		@apply bg-background text-foreground;
+		@apply bg-background font-sans text-foreground antialiased;
+		font-feature-settings:
+			'cv11' 1,
+			'ss03' 1;
+	}
+	::selection {
+		background: color-mix(in oklch, var(--primary) 40%, transparent);
+	}
+	:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+	/* 自訂樣式的輸入框自帶 ring，不重複畫 outline */
+	input:focus-visible,
+	textarea:focus-visible,
+	select:focus-visible,
+	[data-slot='button']:focus-visible {
+		outline: none;
+	}
+}
+
+/* 勾選圓圈：填色 + 勾的 stroke 動畫 */
+.check-circle {
+	--c: var(--status-done);
+	transition:
+		background-color var(--dur-base) var(--ease-out),
+		border-color var(--dur-base) var(--ease-out),
+		transform var(--dur-base) var(--ease-spring);
+}
+.check-circle[data-checked='true'] {
+	background: var(--c);
+	border-color: var(--c);
+}
+.check-circle:active {
+	transform: scale(0.88);
+}
+.check-circle path {
+	stroke-dasharray: 20;
+	stroke-dashoffset: 20;
+	transition: stroke-dashoffset var(--dur-slow) var(--ease-out) 60ms;
+}
+.check-circle[data-checked='true'] path {
+	stroke-dashoffset: 0;
+}
+
+/* 列收合（完成後淡出）：grid-rows 0fr 技巧，不用量高度 */
+.row-collapse {
+	display: grid;
+	grid-template-rows: 1fr;
+	transition:
+		grid-template-rows var(--dur-base) var(--ease-out),
+		opacity var(--dur-base) var(--ease-out);
+}
+.row-collapse[data-collapsed='true'] {
+	grid-template-rows: 0fr;
+	opacity: 0;
+}
+.row-collapse > * {
+	min-height: 0;
+	overflow: hidden;
+}
+
+@keyframes toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px) scale(0.97);
+	}
+}
+
+/* View Transitions：頁面切換淡入，面板與 reduced-motion 不受影響 */
+@keyframes vt-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+}
+::view-transition-old(root) {
+	animation: 90ms linear both reverse vt-in;
+}
+::view-transition-new(root) {
+	animation: var(--dur-base) var(--ease-out) both vt-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		transition-delay: 0ms !important;
+		scroll-behavior: auto !important;
+	}
+	::view-transition-group(*),
+	::view-transition-old(*),
+	::view-transition-new(*) {
+		animation: none !important;
 	}
 }

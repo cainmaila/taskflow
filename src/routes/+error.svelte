@@ -6,7 +6,7 @@
 
 <svelte:head><title>{page.status} - Taskflow</title></svelte:head>
 
-<main class="mx-auto max-w-3xl space-y-4 p-4">
+<main class="mx-auto grid min-h-[70vh] max-w-md content-center justify-items-start gap-4 p-6">
 	<h1 class="text-2xl font-semibold">{page.status === 404 ? '找不到頁面' : '發生錯誤'}</h1>
 	<p class="text-muted-foreground">
 		{page.status === 404 ? '這個頁面不存在，或你沒有權限查看。' : page.error?.message}

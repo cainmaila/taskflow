@@ -1,5 +1,8 @@
 import { marked } from 'marked';
-import { FilterXSS, getDefaultWhiteList } from 'xss';
+// xss 是 CJS，dev 的 workerd runner 不支援具名匯入，改用預設匯入再解構
+import xssPkg from 'xss';
+
+const { FilterXSS, getDefaultWhiteList } = xssPkg as unknown as typeof import('xss');
 
 const tags = getDefaultWhiteList();
 delete tags.img;

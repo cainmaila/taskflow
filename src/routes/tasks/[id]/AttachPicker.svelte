@@ -1,12 +1,17 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { enhance, type ActionResult } from '$app/forms';
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 
 	// version 變了（掛上、移除後頁面資料更新），已搜尋的候選就過期了
-	let { taskId, version }: { taskId: string; version: string } = $props();
+	let {
+		taskId,
+		version,
+		onresult
+	}: { taskId: string; version: string; onresult: (result: ActionResult) => Promise<void> } =
+		$props();
 
 	type Candidate = { id: string; title: string; dueDate: string | null };
 	let q = $state('');
@@ -61,7 +66,7 @@
 </script>
 
 <div class="space-y-2">
-	<Label for="attach-q">掛上既有任務</Label>
+	<Label for="attach-q" class="text-muted-foreground">掛上既有任務</Label>
 	<Input
 		id="attach-q"
 		placeholder="輸入標題搜尋你負責或建立的任務"
@@ -72,7 +77,7 @@
 	/>
 	{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 	{#if results}
-		<ul class="divide-y rounded-md border">
+		<ul class="divide-y divide-border overflow-hidden rounded-lg border border-border">
 			{#each results as c (c.id)}
 				<li class="flex items-center gap-2 p-2">
 					<span class="flex-1">{c.title}</span>
@@ -102,16 +107,16 @@
 			<AlertDialog.Cancel>取消</AlertDialog.Cancel>
 			<form
 				method="post"
-				action="?/attach"
+				action="/tasks/{taskId}?/attach"
 				use:enhance={() => {
 					submitting = true;
-					return async ({ update }) => {
+					return async ({ result }) => {
 						open = false;
 						results = null;
 						q = '';
 						seq++;
 						try {
-							await update();
+							await onresult(result);
 						} finally {
 							submitting = false;
 						}

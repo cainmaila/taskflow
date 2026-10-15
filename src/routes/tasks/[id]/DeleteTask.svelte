@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance, type SubmitFunction } from '$app/forms';
+	import { enhance, type SubmitFunction, type ActionResult } from '$app/forms';
 	import * as AlertDialog from '#lib/components/ui/alert-dialog/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Checkbox } from '#lib/components/ui/checkbox/index.js';
@@ -21,7 +21,8 @@
 		  };
 	type Preview = { plan: Plan; keys: { single: string; tree: string } };
 
-	let { taskId }: { taskId: string } = $props();
+	let { taskId, onresult }: { taskId: string; onresult: (result: ActionResult) => Promise<void> } =
+		$props();
 
 	let open = $state(false);
 	let preview = $state<Preview | null>(null);
@@ -31,13 +32,14 @@
 	// 表單都帶著使用者看到的預覽（expect）；伺服器重算不一致會回 409，這時重抓預覽請使用者再確認
 	const submit: SubmitFunction =
 		() =>
-		async ({ result, update }) => {
+		async ({ result }) => {
 			if (result.type === 'failure' && result.status === 409) {
 				const message = (result.data as { message: string }).message;
 				if (await load()) error = message;
 				return;
 			}
-			await update();
+			open = false;
+			await onresult(result);
 		};
 
 	const load = async () => {
@@ -75,14 +77,19 @@
 			</AlertDialog.Header>
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 			{#if !('single' in plan)}
-				<form method="post" action="?/delete" use:enhance={submit}>
+				<form method="post" action="/tasks/{taskId}?/delete" use:enhance={submit}>
 					<input type="hidden" name="mode" value="single" />
 					<input type="hidden" name="expect" value={preview.keys.single} />
 					<Button type="submit" variant="destructive">確定刪除</Button>
 				</form>
 			{:else}
 				<div class="space-y-5 text-sm">
-					<form method="post" action="?/delete" use:enhance={submit} class="space-y-2">
+					<form
+						method="post"
+						action="/tasks/{taskId}?/delete"
+						use:enhance={submit}
+						class="space-y-2"
+					>
 						<input type="hidden" name="mode" value="single" />
 						<input type="hidden" name="expect" value={preview.keys.single} />
 						<p>
@@ -93,7 +100,7 @@
 					</form>
 					<form
 						method="post"
-						action="?/delete"
+						action="/tasks/{taskId}?/delete"
 						use:enhance={submit}
 						class="space-y-2 border-t pt-4"
 					>
