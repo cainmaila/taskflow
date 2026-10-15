@@ -61,7 +61,7 @@
 5. 專案（已實作，待 review）：project／project_member／project_task（migration 0007）、成員角色 owner／member、掛接權限、封存、專案感知的可見性（D56–D64）、`/projects`、`/projects/[id]`、任務詳情「所屬專案」區、`/tasks` 專案篩選。待決：成員自行退出專案、被刪任務在專案時子任務是否繼承專案掛接（D53）。
 6. 父任務完成檢查（D66）；blocker 延後（D65）。
 7. 留言串（已實作，待 review）：comment 表（task 刪除時 cascade）、可見者皆可留言、作者可編輯／刪除、system_admin 可刪他人留言（D67–D71）；刪除任務的確認框顯示一併刪除的留言數（解 D46 待議）。
-8. 上線：建立遠端 D1、填 `wrangler.jsonc` 的 `database_id`、套用 migration、遠端 seed 管理員、設 production secrets 與 `ORIGIN`、`wrangler deploy`（每個動到遠端的指令先跟使用者確認）。
+8. 上線（已完成，D72）：建立遠端 D1、填 `wrangler.jsonc` 的 `database_id`、套用 migration、遠端 seed 管理員、設 production secrets 與 `ORIGIN`、`wrangler deploy`（每個動到遠端的指令先跟使用者確認）。
 
 每一步都用 TDD 先寫循環檢查與可見性的測試，這兩處最容易出錯、也最不能出錯。
 

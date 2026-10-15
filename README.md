@@ -43,14 +43,17 @@ npm run dev
 npm run dev -- --open
 ```
 
-## Building
+## Deploying (Cloudflare Workers + D1)
 
-To create a production version of your app:
+Production: https://taskflow.cainmaila.workers.dev (see `docs/decisions.md` D72).
 
 ```sh
-npm run build
+pnpm exec wrangler d1 create taskflow        # self-hosting: put the new database_id in wrangler.jsonc
+pnpm db:migrate:remote
+openssl rand -base64 32 | pnpm exec wrangler secret put BETTER_AUTH_SECRET
+# set ORIGIN in wrangler.jsonc `vars`
+ORIGIN=x BETTER_AUTH_SECRET=x pnpm build     # build only validates that the vars exist
+pnpm exec wrangler deploy
+# .env: ADMIN_EMAIL / ADMIN_PASSWORD / ADMIN_NAME, then:
+pnpm seed --remote                           # creates the first system_admin; refuses if a user exists
 ```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
