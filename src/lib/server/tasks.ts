@@ -387,6 +387,18 @@ export const updateTask = async (db: Db, userId: string, id: string, patch: Task
 
 // ---- 刪除（D46/D53–D55）----
 
+/** D69：這些任務底下的留言總數（分批，D1 綁定參數上限） */
+const countComments = async (db: Db, ids: string[]) => {
+	let n = 0;
+	for (let i = 0; i < ids.length; i += 90) {
+		const [r] = await db.all<{ n: number }>(
+			sql`select count(*) as n from comment where task_id in (${sql.join(ids.slice(i, i + 90), sql`, `)})`
+		);
+		n += Number(r.n);
+	}
+	return n;
+};
+
 const descendantEdges = (db: Db, id: string) =>
 	db.all<DescendantEdge>(sql`
 		with recursive d(id) as (
@@ -407,16 +419,20 @@ export const planDelete = async (db: Db, userId: string, id: string) => {
 			coalesce(sum((select count(*) from task_parent x where x.child_id = tp.child_id) = 1), 0) as sole
 		from task_parent tp where tp.parent_id = ${id}`);
 	const childCount = Number(direct[0]?.n ?? 0);
-	if (!childCount) return { childCount: 0 as const };
+	// D69：留言數只供顯示，不納入 planKey
+	const commentCount = await countComments(db, [id]);
+	if (!childCount) return { childCount: 0 as const, commentCount };
 	const edges = await descendantEdges(db, id);
 	const tooLarge = new Set(edges.map((e) => e.childId)).size > TREE_DELETE_CAP;
 	const tree = tooLarge ? null : computeTreeDelete(id, userId, edges);
 	return {
 		childCount,
+		commentCount,
 		// 只刪這個：只有這個任務是唯一 parent 的子任務會變成頂層
 		single: { becomingTopLevel: Number(direct[0].sole) },
 		tree: tree && {
 			willDelete: tree.deleteIds.length,
+			commentCount: await countComments(db, tree.deleteIds),
 			keptShared: tree.keptShared,
 			keptNotMine: tree.keptNotMine,
 			becomingTopLevel: tree.becomingTopLevel

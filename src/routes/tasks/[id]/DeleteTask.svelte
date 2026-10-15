@@ -6,12 +6,14 @@
 	import { Label } from '#lib/components/ui/label/index.js';
 
 	type Plan =
-		| { childCount: 0 }
+		| { childCount: 0; commentCount: number }
 		| {
 				childCount: number;
+				commentCount: number;
 				single: { becomingTopLevel: number };
 				tree: {
 					willDelete: number;
+					commentCount: number;
 					keptShared: number;
 					keptNotMine: number;
 					becomingTopLevel: number;
@@ -67,7 +69,9 @@
 				<AlertDialog.Title>
 					{'single' in plan ? `這個任務有 ${plan.childCount} 個子任務` : '刪除這個任務？'}
 				</AlertDialog.Title>
-				<AlertDialog.Description>刪除後無法復原。</AlertDialog.Description>
+				<AlertDialog.Description>
+					刪除後無法復原。{#if plan.commentCount}將一併刪除 {plan.commentCount} 則留言。{/if}
+				</AlertDialog.Description>
 			</AlertDialog.Header>
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
 			{#if !('single' in plan)}
@@ -82,7 +86,8 @@
 						<input type="hidden" name="mode" value="single" />
 						<input type="hidden" name="expect" value={preview.keys.single} />
 						<p>
-							只刪除這個任務，子任務保留；{plan.single.becomingTopLevel} 個子任務會失去上層任務並成為頂層任務。
+							只刪除這個任務，子任務保留；將一併刪除 {plan.commentCount} 則留言；{plan.single
+								.becomingTopLevel} 個子任務會失去上層任務並成為頂層任務。
 						</p>
 						<Button type="submit" variant="outline">只刪這個</Button>
 					</form>
@@ -96,7 +101,8 @@
 						<input type="hidden" name="expect" value={preview.keys.tree} />
 						{#if plan.tree}
 							<p>
-								連同子任務一起刪除，共 {plan.tree.willDelete} 個任務。共用的 {plan.tree.keptShared} 個子任務會保留，
+								連同子任務一起刪除，共 {plan.tree.willDelete} 個任務，將一併刪除 {plan.tree
+									.commentCount} 則留言。共用的 {plan.tree.keptShared} 個子任務會保留，
 								{plan.tree.keptNotMine} 個不是你建立的任務會保留；{plan.tree.becomingTopLevel} 個保留的任務會成為頂層任務。
 							</p>
 							<Label class="flex items-center gap-2 font-normal">

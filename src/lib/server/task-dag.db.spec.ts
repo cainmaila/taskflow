@@ -271,7 +271,7 @@ describe('lists (D42/D49/D52)', () => {
 describe('delete plan (D53-D55)', () => {
 	it('no children -> childCount 0, plain delete', async () => {
 		const a = await mk('u1', 'A');
-		expect(await planDelete(t.db, 'u1', a)).toEqual({ childCount: 0 });
+		expect(await planDelete(t.db, 'u1', a)).toEqual({ childCount: 0, commentCount: 0 });
 		await deleteTask(t.db, 'u1', a);
 		expect(await t.db.select().from(task).where(eq(task.id, a)).get()).toBeUndefined();
 	});
@@ -295,8 +295,9 @@ describe('delete plan (D53-D55)', () => {
 		const { a } = await build();
 		expect(await planDelete(t.db, 'u1', a)).toEqual({
 			childCount: 3,
+			commentCount: 0,
 			single: { becomingTopLevel: 2 }, // B and N have A as their only parent
-			tree: { willDelete: 2, keptShared: 2, keptNotMine: 1, becomingTopLevel: 1 }
+			tree: { willDelete: 2, commentCount: 0, keptShared: 2, keptNotMine: 1, becomingTopLevel: 1 }
 		});
 	});
 

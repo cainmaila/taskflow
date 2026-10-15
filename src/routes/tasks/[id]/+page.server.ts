@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { env } from 'cloudflare:workers';
+import { addComment, deleteComment, editComment, listComments } from '#lib/server/comments.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { listMembers } from '#lib/server/members.ts';
 import { projectFailure } from '#lib/server/project-http.ts';
@@ -33,6 +34,12 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			parents: await listParents(db, me.id, params.id),
 			projects: await listTaskProjects(db, me.id, params.id),
 			children: await listChildren(db, me.id, params.id),
+			// D68：作者可改可刪；system_admin 可刪不可改
+			comments: (await listComments(db, me.id, params.id)).map((c) => ({
+				...c,
+				canEdit: c.authorId === me.id,
+				canDelete: c.authorId === me.id || me.role === 'system_admin'
+			})),
 			today: todayISO(),
 			canDelete: canChangeAssignee,
 			canChangeAssignee,
@@ -145,6 +152,50 @@ export const actions: Actions = {
 			return projectFailure(e);
 		}
 		return { projectDetached: true };
+	},
+	addComment: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await addComment(getDb(env.DB), me.id, params.id, form.get('body')?.toString());
+		} catch (e) {
+			return failure(e);
+		}
+		return { commented: true };
+	},
+	editComment: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await editComment(
+				getDb(env.DB),
+				me.id,
+				params.id,
+				form.get('commentId')?.toString() ?? '',
+				form.get('body')?.toString()
+			);
+		} catch (e) {
+			return failure(e);
+		}
+		return { edited: true };
+	},
+	deleteComment: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await deleteComment(
+				getDb(env.DB),
+				{ userId: me.id, systemRole: me.role },
+				params.id,
+				form.get('commentId')?.toString() ?? ''
+			);
+		} catch (e) {
+			return failure(e);
+		}
+		return { deleted: true };
 	},
 	delete: async ({ request, locals, params }) => {
 		const me = locals.user;

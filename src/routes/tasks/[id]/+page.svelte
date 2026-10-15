@@ -14,6 +14,7 @@
 	import TaskRow from '../TaskRow.svelte';
 	import ConfirmDialog from '../../ConfirmDialog.svelte';
 	import AttachPicker from './AttachPicker.svelte';
+	import Comments from './Comments.svelte';
 	import DeleteTask from './DeleteTask.svelte';
 	import type { PageProps } from './$types';
 
@@ -250,6 +251,8 @@
 			version={`${data.parents.visible.length}/${data.children.length}`}
 		/>
 	</section>
+
+	<Comments comments={data.comments} />
 
 	{#if data.canDelete}
 		<DeleteTask taskId={data.task.id} />
