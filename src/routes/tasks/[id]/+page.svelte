@@ -14,6 +14,7 @@
 	import TaskRow from '../TaskRow.svelte';
 	import ConfirmDialog from '../../ConfirmDialog.svelte';
 	import AttachPicker from './AttachPicker.svelte';
+	import Comments from './Comments.svelte';
 	import DeleteTask from './DeleteTask.svelte';
 	import type { PageProps } from './$types';
 
@@ -40,7 +41,7 @@
 		{/if}
 	</div>
 
-	{#if form?.message}
+	{#if form?.message && !('commentError' in form)}
 		<Alert.Root variant="destructive"
 			><Alert.Description>{form.message}</Alert.Description></Alert.Root
 		>
@@ -250,6 +251,8 @@
 			version={`${data.parents.visible.length}/${data.children.length}`}
 		/>
 	</section>
+
+	<Comments comments={data.comments} {form} />
 
 	{#if data.canDelete}
 		<DeleteTask taskId={data.task.id} />

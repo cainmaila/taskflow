@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import { env } from 'cloudflare:workers';
+import { addComment, deleteComment, editComment, listComments } from '#lib/server/comments.ts';
 import { getDb } from '#lib/server/db/index.ts';
 import { listMembers } from '#lib/server/members.ts';
 import { projectFailure } from '#lib/server/project-http.ts';
@@ -33,6 +34,12 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			parents: await listParents(db, me.id, params.id),
 			projects: await listTaskProjects(db, me.id, params.id),
 			children: await listChildren(db, me.id, params.id),
+			// D68：作者可改可刪；system_admin 可刪不可改
+			comments: (await listComments(db, me.id, params.id)).map((c) => ({
+				...c,
+				canEdit: c.authorId === me.id,
+				canDelete: c.authorId === me.id || me.role === 'system_admin'
+			})),
 			today: todayISO(),
 			canDelete: canChangeAssignee,
 			canChangeAssignee,
@@ -55,6 +62,12 @@ const failure = (e: unknown) => {
 	if (e instanceof TaskForbiddenError) return fail(403, { message: e.message });
 	if (e instanceof TaskError) return fail(400, { message: e.message });
 	throw e;
+};
+
+/** 留言的失敗要標出來源（kind／commentId），留言區才能把錯誤顯示在對應的表單旁，頁首不重複顯示 */
+const commentFailure = (e: unknown, kind: 'add' | 'edit' | 'delete', commentId = '') => {
+	const r = failure(e);
+	return fail(r.status, { ...r.data, commentError: { kind, commentId } });
 };
 
 export const actions: Actions = {
@@ -145,6 +158,46 @@ export const actions: Actions = {
 			return projectFailure(e);
 		}
 		return { projectDetached: true };
+	},
+	addComment: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		try {
+			await addComment(getDb(env.DB), me.id, params.id, form.get('body')?.toString());
+		} catch (e) {
+			return commentFailure(e, 'add');
+		}
+		return { commented: true };
+	},
+	editComment: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		const commentId = form.get('commentId')?.toString() ?? '';
+		try {
+			await editComment(getDb(env.DB), me.id, params.id, commentId, form.get('body')?.toString());
+		} catch (e) {
+			return commentFailure(e, 'edit', commentId);
+		}
+		return { edited: true };
+	},
+	deleteComment: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		const commentId = form.get('commentId')?.toString() ?? '';
+		try {
+			await deleteComment(
+				getDb(env.DB),
+				{ userId: me.id, systemRole: me.role },
+				params.id,
+				commentId
+			);
+		} catch (e) {
+			return commentFailure(e, 'delete', commentId);
+		}
+		return { deleted: true };
 	},
 	delete: async ({ request, locals, params }) => {
 		const me = locals.user;

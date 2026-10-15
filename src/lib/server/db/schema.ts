@@ -118,6 +118,29 @@ export const projectTask = sqliteTable(
 	]
 );
 
+// 任務留言串（D24/D25/D69）：扁平；任務刪除時一併刪除
+export const comment = sqliteTable(
+	'comment',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		taskId: text('task_id')
+			.notNull()
+			.references(() => task.id, { onDelete: 'cascade' }),
+		authorId: text('author_id')
+			.notNull()
+			.references(() => user.id),
+		body: text('body').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp_ms' })
+			.notNull()
+			.$defaultFn(() => new Date()),
+		// D25：有值才顯示「已編輯」，不留歷史
+		editedAt: integer('edited_at', { mode: 'timestamp_ms' })
+	},
+	(t) => [index('comment_task_id_idx').on(t.taskId, t.createdAt)]
+);
+
 export const invitation = sqliteTable('invitation', {
 	id: text('id')
 		.primaryKey()

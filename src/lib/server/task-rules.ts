@@ -3,6 +3,7 @@ import { TASK_STATUSES, type TaskStatus } from './db/schema';
 
 export const TITLE_MAX = 200;
 export const DESC_MAX = 20000;
+export const COMMENT_MAX = 5000;
 
 export class TaskError extends Error {}
 export class TaskForbiddenError extends TaskError {}
@@ -54,6 +55,13 @@ export const validateTitle = (value: unknown) => {
 	if (!title) throw new TaskError('請輸入標題');
 	if (title.length > TITLE_MAX) throw new TaskError(`標題最多 ${TITLE_MAX} 字`);
 	return title;
+};
+
+export const validateComment = (value: unknown) => {
+	const body = typeof value === 'string' ? value.trim() : '';
+	if (!body) throw new TaskError('請輸入留言內容');
+	if (body.length > COMMENT_MAX) throw new TaskError(`留言最多 ${COMMENT_MAX} 字`);
+	return body;
 };
 
 export const validateDates = (startDate: string | null, dueDate: string | null) => {

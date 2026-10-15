@@ -57,6 +57,13 @@
       "when": 1791959560725,
       "tag": "0007_sparkling_sabra",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792067313379,
+      "tag": "0008_comments",
+      "breakpoints": true
     }
   ]
 }

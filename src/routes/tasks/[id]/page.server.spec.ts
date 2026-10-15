@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+	comment,
 	project,
 	projectMember,
 	projectTask,
@@ -26,7 +27,7 @@ afterAll(() => t.dispose());
 
 let id: string;
 beforeEach(async () => {
-	for (const table of [projectTask, projectMember, project, taskParent, task, user])
+	for (const table of [comment, projectTask, projectMember, project, taskParent, task, user])
 		await t.db.delete(table);
 	await t.db.insert(user).values([
 		{ id: 'u1', name: 'A', email: 'a@x.io' },
@@ -157,5 +158,85 @@ describe('task project actions', () => {
 		// 未登入
 		expect(await run(actions.attachProject!(ev(null, body)))).toMatchObject({ location: '/login' });
 		expect(await run(actions.detachProject!(ev(null, body)))).toMatchObject({ location: '/login' });
+	});
+});
+
+describe('task comment actions', () => {
+	const run = (p: unknown) => Promise.resolve(p).catch((x) => x);
+	const adminEv = (fields: Record<string, string>) =>
+		({
+			locals: { user: { id: 'u3', role: 'system_admin' } },
+			params: { id },
+			request: { formData: async () => new URLSearchParams(fields) }
+		}) as never;
+
+	it('add / edit / delete map to 400 / 403 / 404 and logged-out redirects', async () => {
+		for (const a of [actions.addComment!, actions.editComment!, actions.deleteComment!])
+			expect(await run(a(ev(null)))).toMatchObject({ location: '/login' });
+		// 失敗要帶來源標記，留言區才能就近顯示（頁首不重複）
+		expect(await actions.addComment!(ev('u1', { body: ' ' }))).toMatchObject({
+			status: 400,
+			data: { commentError: { kind: 'add', commentId: '' } }
+		});
+		expect(await run(actions.addComment!(ev('u2', { body: 'hi' })))).toMatchObject({ status: 404 });
+		expect(await actions.addComment!(ev('u1', { body: 'hi' }))).toMatchObject({ commented: true });
+
+		const { comments } = (await load!(ev('u1'))) as { comments: { id: string }[] };
+		expect(comments).toHaveLength(1);
+		const commentId = comments[0].id;
+		await actions.save!(ev('u1', { title: 'T', dueDate: '2026-10-20', assigneeId: 'u2' }));
+		expect(await actions.editComment!(ev('u2', { commentId, body: 'x' }))).toMatchObject({
+			status: 403
+		});
+		expect(await actions.deleteComment!(ev('u2', { commentId }))).toMatchObject({
+			status: 403,
+			data: { commentError: { kind: 'delete', commentId } }
+		});
+		expect(await actions.editComment!(ev('u1', { commentId, body: '' }))).toMatchObject({
+			status: 400,
+			data: { commentError: { kind: 'edit', commentId } }
+		});
+		expect(await actions.editComment!(ev('u1', { commentId, body: 'edited' }))).toMatchObject({
+			edited: true
+		});
+		expect(
+			await run(actions.editComment!(ev('u1', { commentId: 'nope', body: 'x' })))
+		).toMatchObject({ status: 404 });
+		// system_admin 能刪不能改：先讓 admin 成為任務可見者（assignee），編輯他人留言 → 403（D68）
+		await actions.save!(ev('u1', { title: 'T', dueDate: '2026-10-20', assigneeId: 'u3' }));
+		expect(await actions.editComment!(adminEv({ commentId, body: 'x' }))).toMatchObject({
+			status: 403
+		});
+		// 跨任務：用任務 other 的 id 操作 id 的留言 → 404
+		const other = await createTask(t.db, 'u1', { title: 'O', dueDate: '2026-10-20' });
+		const cross = (u: string, fields: Record<string, string>) => ev(u, fields, other);
+		expect(await run(actions.editComment!(cross('u1', { commentId, body: 'x' })))).toMatchObject({
+			status: 404
+		});
+		expect(await run(actions.deleteComment!(cross('u1', { commentId })))).toMatchObject({
+			status: 404
+		});
+		expect(await actions.deleteComment!(adminEv({ commentId }))).toMatchObject({ deleted: true });
+		expect(((await load!(ev('u1'))) as { comments: unknown[] }).comments).toHaveLength(0);
+	});
+
+	it('load flags which comments the viewer can edit / delete', async () => {
+		await actions.save!(ev('u1', { title: 'T', dueDate: '2026-10-20', assigneeId: 'u2' }));
+		await actions.addComment!(ev('u1', { body: 'mine' }));
+		await actions.addComment!(ev('u2', { body: 'theirs' }));
+		const flags = async (u: string) =>
+			(
+				(await load!(ev(u))) as {
+					comments: { body: string; canEdit: boolean; canDelete: boolean }[];
+				}
+			).comments.map((c) => [c.body, c.canEdit, c.canDelete]);
+		expect(await flags('u1')).toEqual([
+			['mine', true, true],
+			['theirs', false, false]
+		]);
+		expect(await flags('u2')).toEqual([
+			['mine', false, false],
+			['theirs', true, true]
+		]);
 	});
 });
