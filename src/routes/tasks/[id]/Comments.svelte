@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import * as Alert from '#lib/components/ui/alert/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Label } from '#lib/components/ui/label/index.js';
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
@@ -15,7 +16,18 @@
 		canEdit: boolean;
 		canDelete: boolean;
 	};
-	let { comments }: { comments: Item[] } = $props();
+	type CommentError = { kind: 'add' | 'edit' | 'delete'; commentId: string };
+	let {
+		comments,
+		form
+	}: {
+		comments: Item[];
+		form?: { message?: string; commentError?: CommentError } | null;
+	} = $props();
+	const err = (kind: CommentError['kind'], commentId = '') =>
+		form?.commentError?.kind === kind && form.commentError.commentId === commentId
+			? form.message
+			: undefined;
 
 	let editingId = $state<string | null>(null);
 	let deleting = $state<Item | null>(null);
@@ -32,6 +44,11 @@
 				>{comments.length} 則</span
 			>{/if}
 	</h2>
+	{#if err('delete', form?.commentError?.commentId)}
+		<Alert.Root variant="destructive"
+			><Alert.Description>{form?.message}</Alert.Description></Alert.Root
+		>
+	{/if}
 	<ul class="space-y-3">
 		{#each comments as c (c.id)}
 			<li class="space-y-2 rounded-md border p-3">
@@ -64,6 +81,11 @@
 					>
 						<input type="hidden" name="commentId" value={c.id} />
 						<Textarea name="body" required maxlength={5000} rows={4} value={c.body} />
+						{#if err('edit', c.id)}
+							<Alert.Root variant="destructive"
+								><Alert.Description>{form?.message}</Alert.Description></Alert.Root
+							>
+						{/if}
 						<div class="flex gap-2">
 							<Button type="submit" size="sm">儲存</Button>
 							<Button type="button" size="sm" variant="outline" onclick={() => (editingId = null)}
@@ -85,6 +107,11 @@
 	<form method="post" action="?/addComment" use:enhance class="space-y-2">
 		<Label for="comment-body">新增留言（Markdown）</Label>
 		<Textarea id="comment-body" name="body" required maxlength={5000} rows={3} />
+		{#if err('add')}
+			<Alert.Root variant="destructive"
+				><Alert.Description>{form?.message}</Alert.Description></Alert.Root
+			>
+		{/if}
 		<Button type="submit">送出</Button>
 	</form>
 </section>

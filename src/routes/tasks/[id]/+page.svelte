@@ -41,7 +41,7 @@
 		{/if}
 	</div>
 
-	{#if form?.message}
+	{#if form?.message && !('commentError' in form)}
 		<Alert.Root variant="destructive"
 			><Alert.Description>{form.message}</Alert.Description></Alert.Root
 		>
@@ -252,7 +252,7 @@
 		/>
 	</section>
 
-	<Comments comments={data.comments} />
+	<Comments comments={data.comments} {form} />
 
 	{#if data.canDelete}
 		<DeleteTask taskId={data.task.id} />

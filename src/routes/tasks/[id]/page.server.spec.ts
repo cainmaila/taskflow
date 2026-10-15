@@ -173,7 +173,11 @@ describe('task comment actions', () => {
 	it('add / edit / delete map to 400 / 403 / 404 and logged-out redirects', async () => {
 		for (const a of [actions.addComment!, actions.editComment!, actions.deleteComment!])
 			expect(await run(a(ev(null)))).toMatchObject({ location: '/login' });
-		expect(await actions.addComment!(ev('u1', { body: ' ' }))).toMatchObject({ status: 400 });
+		// 失敗要帶來源標記，留言區才能就近顯示（頁首不重複）
+		expect(await actions.addComment!(ev('u1', { body: ' ' }))).toMatchObject({
+			status: 400,
+			data: { commentError: { kind: 'add', commentId: '' } }
+		});
 		expect(await run(actions.addComment!(ev('u2', { body: 'hi' })))).toMatchObject({ status: 404 });
 		expect(await actions.addComment!(ev('u1', { body: 'hi' }))).toMatchObject({ commented: true });
 
@@ -184,9 +188,13 @@ describe('task comment actions', () => {
 		expect(await actions.editComment!(ev('u2', { commentId, body: 'x' }))).toMatchObject({
 			status: 403
 		});
-		expect(await actions.deleteComment!(ev('u2', { commentId }))).toMatchObject({ status: 403 });
+		expect(await actions.deleteComment!(ev('u2', { commentId }))).toMatchObject({
+			status: 403,
+			data: { commentError: { kind: 'delete', commentId } }
+		});
 		expect(await actions.editComment!(ev('u1', { commentId, body: '' }))).toMatchObject({
-			status: 400
+			status: 400,
+			data: { commentError: { kind: 'edit', commentId } }
 		});
 		expect(await actions.editComment!(ev('u1', { commentId, body: 'edited' }))).toMatchObject({
 			edited: true

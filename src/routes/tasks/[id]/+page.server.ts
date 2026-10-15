@@ -64,6 +64,12 @@ const failure = (e: unknown) => {
 	throw e;
 };
 
+/** 留言的失敗要標出來源（kind／commentId），留言區才能把錯誤顯示在對應的表單旁，頁首不重複顯示 */
+const commentFailure = (e: unknown, kind: 'add' | 'edit' | 'delete', commentId = '') => {
+	const r = failure(e);
+	return fail(r.status, { ...r.data, commentError: { kind, commentId } });
+};
+
 export const actions: Actions = {
 	save: async ({ request, locals, params }) => {
 		const me = locals.user;
@@ -160,7 +166,7 @@ export const actions: Actions = {
 		try {
 			await addComment(getDb(env.DB), me.id, params.id, form.get('body')?.toString());
 		} catch (e) {
-			return failure(e);
+			return commentFailure(e, 'add');
 		}
 		return { commented: true };
 	},
@@ -168,16 +174,11 @@ export const actions: Actions = {
 		const me = locals.user;
 		if (!me) redirect(302, '/login');
 		const form = await request.formData();
+		const commentId = form.get('commentId')?.toString() ?? '';
 		try {
-			await editComment(
-				getDb(env.DB),
-				me.id,
-				params.id,
-				form.get('commentId')?.toString() ?? '',
-				form.get('body')?.toString()
-			);
+			await editComment(getDb(env.DB), me.id, params.id, commentId, form.get('body')?.toString());
 		} catch (e) {
-			return failure(e);
+			return commentFailure(e, 'edit', commentId);
 		}
 		return { edited: true };
 	},
@@ -185,15 +186,16 @@ export const actions: Actions = {
 		const me = locals.user;
 		if (!me) redirect(302, '/login');
 		const form = await request.formData();
+		const commentId = form.get('commentId')?.toString() ?? '';
 		try {
 			await deleteComment(
 				getDb(env.DB),
 				{ userId: me.id, systemRole: me.role },
 				params.id,
-				form.get('commentId')?.toString() ?? ''
+				commentId
 			);
 		} catch (e) {
-			return failure(e);
+			return commentFailure(e, 'delete', commentId);
 		}
 		return { deleted: true };
 	},
