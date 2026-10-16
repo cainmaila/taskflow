@@ -14,7 +14,7 @@
 	};
 	const board = $derived(page.url.searchParams.get('view') === 'board');
 	const item =
-		'inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors md:h-9';
+		'inline-flex h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium transition-colors md:h-9';
 </script>
 
 <!-- eslint-disable svelte/no-navigation-without-resolve -- 連結指向目前路由（pathname），只換 query -->
@@ -27,9 +27,9 @@
 		<a
 			href={hrefFor(o.v)}
 			aria-current={current ? 'page' : undefined}
-			data-sveltekit-noscroll
+			data-sveltekit-reset="false"
 			data-sveltekit-replacestate
-			class="{item} outline-none focus-visible:ring-3 focus-visible:ring-ring/50 {current
+			class="{item} outline-none focus-visible:ring-3 focus-visible:ring-ring {current
 				? 'bg-secondary text-foreground'
 				: 'text-muted-foreground hover:text-foreground'}"
 		>

@@ -93,6 +93,23 @@ const loadVisible = async (db: Db, userId: string, id: string) => {
 
 export const getTask = (db: Db, userId: string, id: string) => loadVisible(db, userId, id);
 
+/** 驗證輸入並備好「新增頂層任務」的語句（D74 排最後），供需要與其他寫入同一個 batch 的呼叫端使用 */
+export const prepareTask = (
+	db: Db,
+	userId: string,
+	input: { title: unknown; dueDate: unknown }
+) => {
+	const title = validateTitle(input.title);
+	const dueDate = typeof input.dueDate === 'string' ? input.dueDate : null;
+	validateDates(null, dueDate);
+	const id = crypto.randomUUID();
+	const position = sql<number>`(select coalesce(max(position), 0) + ${POSITION_STEP} from task)`;
+	return {
+		id,
+		insert: db.insert(task).values({ id, title, dueDate, createdBy: userId, position })
+	};
+};
+
 export const createTask = async (
 	db: Db,
 	userId: string,
@@ -157,10 +174,18 @@ const inMyProject = (userId: string, projectId?: string) =>
 			where pt.task_id = task.id and pt.project_id = ${projectId} and pm.user_id = ${userId})`
 		: undefined;
 
+/** 清單列的唯讀欄位：負責人名字、我所屬的第一個專案名（D63：只看我是成員的專案，不洩漏其他專案） */
+const rowExtras = (userId: string) => ({
+	assigneeName: sql<string | null>`(select u.name from user u where u.id = task.assignee_id)`,
+	projectName: sql<
+		string | null
+	>`(select p.name from project_task pt join project p on p.id = pt.project_id join project_member pm on pm.project_id = p.id and pm.user_id = ${userId} where pt.task_id = task.id order by p.name limit 1)`
+});
+
 /** D49：頂層（沒有 parent）且歸屬者是我，或指派給我的任務 */
 export const listMyTasks = async (db: Db, userId: string, filters: TaskFilters, today: string) => {
 	const rows = await db
-		.select({ ...listColumns, ...moveFlags(userId) })
+		.select({ ...listColumns, ...moveFlags(userId), ...rowExtras(userId) })
 		.from(task)
 		.where(
 			and(
@@ -193,7 +218,7 @@ export const listAssignedByMe = async (
 	today: string
 ) => {
 	const rows = await db
-		.select({ ...listColumns, ...moveFlags(userId), assigneeName: user.name })
+		.select({ ...listColumns, ...moveFlags(userId), ...rowExtras(userId), assigneeName: user.name })
 		.from(task)
 		.innerJoin(user, eq(user.id, task.assigneeId))
 		.where(

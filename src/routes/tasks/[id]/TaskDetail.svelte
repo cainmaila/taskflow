@@ -355,7 +355,8 @@
 						<a
 							href={resolve('/tasks/[id]', { id: p.id })}
 							onclick={onopen ? (e) => onopen(e, p.id) : undefined}
-							class="flex-1 py-2 font-medium hover:underline">{p.title}</a
+							class="min-w-0 flex-1 py-2 font-medium [overflow-wrap:anywhere] hover:underline"
+							>{p.title}</a
 						>
 						<Button type="button" size="sm" variant="ghost" onclick={() => (removing = p)}
 							>移除</Button
@@ -381,7 +382,8 @@
 					<li class="flex items-center gap-2 py-1 pr-1 pl-3">
 						<a
 							href={resolve('/projects/[id]', { id: pr.id })}
-							class="flex-1 py-2 font-medium hover:underline">{pr.name}</a
+							class="min-w-0 flex-1 py-2 font-medium [overflow-wrap:anywhere] hover:underline"
+							>{pr.name}</a
 						>
 						{#if pr.archived}<Badge variant="outline">已封存</Badge>{/if}
 						{#if pr.canDetach}

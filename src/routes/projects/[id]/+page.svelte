@@ -8,6 +8,8 @@
 	import ArchiveRestoreIcon from '@lucide/svelte/icons/archive-restore';
 	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
 	import LoaderIcon from '@lucide/svelte/icons/loader-circle';
+	import ListChecksIcon from '@lucide/svelte/icons/list-checks';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import UserMinusIcon from '@lucide/svelte/icons/user-minus';
 	import * as Card from '#lib/components/ui/card/index.js';
@@ -23,6 +25,7 @@
 	import { toast } from '#lib/toast.svelte.js';
 	import ConfirmDialog from '../../ConfirmDialog.svelte';
 	import Avatar from '../../tasks/Avatar.svelte';
+	import QuickAdd from '../../tasks/QuickAdd.svelte';
 	import Board from '../../tasks/Board.svelte';
 	import TaskPanel from '../../tasks/TaskPanel.svelte';
 	import TaskRow from '../../tasks/TaskRow.svelte';
@@ -35,6 +38,8 @@
 	const archived = $derived(!!p.archivedAt);
 	// 寫入控制只在有管理權限且未封存時出現（權限仍以 server 為準）
 	const writable = $derived(p.canManage && !archived);
+	// 新增任務：任何專案成員（建立者即可掛入，D58/D59）且未封存；系統管理員非成員不顯示
+	const canAdd = $derived(!!p.myRole && !archived);
 	const roleLabel = { owner: '管理者', member: '成員' } as const;
 
 	// 分頁以 ?tab= 保存；設定分頁只給有管理權限者
@@ -60,6 +65,8 @@
 	// action 網址帶著目前的 query（tab、view），否則送出後 URL 會丟掉分頁
 	const act = (name: string) => `?/${name}${page.url.search ? '&' + page.url.search.slice(1) : ''}`;
 
+	let quickAdd = $state<{ focus: () => void }>();
+
 	let removing = $state<(typeof p.members)[number] | null>(null);
 	let detaching = $state<(typeof data.tasks)[number] | null>(null);
 	let archiving = $state(false);
@@ -70,6 +77,8 @@
 		// toast() 會讀寫 toasts 狀態，需 untrack 以免 effect 自我觸發
 		if (form?.ok) untrack(() => toast(form.ok!));
 	});
+	// 新增任務失敗：錯誤顯示在表單內，不重複出現 alert
+	const addFailed = $derived(form?.section === 'tasks' && form.title !== undefined);
 	const failure = (section: 'info' | 'members' | 'tasks') =>
 		form?.section === section && form.message ? form.message : '';
 
@@ -123,7 +132,7 @@
 >
 	<a
 		href={resolve('/projects')}
-		class="inline-flex h-10 items-center gap-1 rounded-lg pr-2 text-sm text-muted-foreground transition-colors hover:text-foreground md:h-9"
+		class="inline-flex h-11 items-center gap-1 rounded-lg pr-2 text-sm text-muted-foreground transition-colors hover:text-foreground md:h-9"
 		><ChevronLeftIcon class="size-4" aria-hidden="true" />專案</a
 	>
 
@@ -185,7 +194,7 @@
 					<button
 						type="button"
 						onclick={startEdit}
-						class="group -mx-2 inline-flex max-w-full items-center gap-2 rounded-lg px-2 py-0.5 text-left transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+						class="group -mx-2 inline-flex max-w-full items-center gap-2 rounded-lg px-2 py-0.5 text-left transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none"
 						aria-label="{p.name}，點擊編輯名稱"
 					>
 						{p.name}
@@ -206,7 +215,7 @@
 			<div class="ml-auto flex items-center gap-3">
 				<a
 					href={tabHref('members')}
-					class="flex items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+					class="flex items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring"
 					aria-label="共 {p.members.length} 位成員，前往成員分頁"
 				>
 					{#each shown as m (m.userId)}
@@ -251,7 +260,7 @@
 						type="button"
 						aria-expanded={descOpen}
 						onclick={() => (descOpen = !descOpen)}
-						class="mt-1 h-10 rounded-lg text-sm text-primary outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9"
+						class="mt-1 h-11 rounded-lg text-sm text-primary outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring md:h-9"
 						>{descOpen ? '收合' : '展開全部'}</button
 					>
 				{/if}
@@ -265,7 +274,7 @@
 					aria-current={tab === t.id ? 'page' : undefined}
 					data-sveltekit-reset="false"
 					data-sveltekit-replacestate
-					class="relative flex h-11 shrink-0 items-center gap-2 rounded-t-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50 {tab ===
+					class="relative flex h-11 shrink-0 items-center gap-2 rounded-t-lg px-3 text-sm font-medium transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring {tab ===
 					t.id
 						? 'text-foreground'
 						: 'text-muted-foreground hover:text-foreground'}"
@@ -290,10 +299,20 @@
 				<p class="text-sm text-muted-foreground">共 {data.tasks.length} 項任務</p>
 				<ViewToggle />
 			</div>
-			{#if failure('tasks')}
+			{#if failure('tasks') && !addFailed}
 				<Alert.Root variant="destructive"
 					><Alert.Description>{failure('tasks')}</Alert.Description></Alert.Root
 				>
+			{/if}
+			{#if canAdd}
+				<QuickAdd
+					bind:this={quickAdd}
+					action={act('addTask')}
+					today={data.today}
+					title={form?.section === 'tasks' && form.title ? form.title : ''}
+					dueDate={form?.section === 'tasks' ? form.dueDate : undefined}
+					message={form?.section === 'tasks' && form.message ? form.message : undefined}
+				/>
 			{/if}
 			{#if board}
 				<Board
@@ -316,9 +335,18 @@
 								{/if}
 							</div>
 						{:else}
-							<p class="py-6 text-center text-sm text-muted-foreground">
-								還沒有任務。到任務的詳情頁，把任務掛進這個專案。
-							</p>
+							<div class="grid justify-items-center gap-2 py-10 text-center">
+								<ListChecksIcon class="size-10 text-muted-foreground/50" aria-hidden="true" />
+								<p class="font-medium">這個專案還沒有任務</p>
+								<p class="max-w-xs text-sm text-muted-foreground">
+									{canAdd ? '新增的任務會自動加入這個專案。' : '專案成員新增任務後會顯示在這裡。'}
+								</p>
+								{#if canAdd}
+									<Button class="mt-2" onclick={() => quickAdd?.focus()}
+										><PlusIcon aria-hidden="true" />新增第一個任務</Button
+									>
+								{/if}
+							</div>
 						{/each}
 					</Card.Content>
 				</Card.Root>

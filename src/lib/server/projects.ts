@@ -13,7 +13,14 @@ import {
 	validateDescription,
 	validateName
 } from './project-rules';
-import { moveFlags, getTask, listColumns, TaskNotFoundError } from './tasks';
+import {
+	prepareTask,
+	TaskError,
+	moveFlags,
+	getTask,
+	listColumns,
+	TaskNotFoundError
+} from './tasks';
 
 export { ProjectError, ProjectForbiddenError, ProjectNotFoundError };
 
@@ -262,6 +269,52 @@ export const attachTask = async (db: Db, a: ProjectActor, projectId: string, tas
 		if (isUnique(e)) throw new ProjectError('任務已經在這個專案裡');
 		throw e;
 	}
+};
+
+/**
+ * 在專案內快速新增任務：建立後自動掛入（D59/D60）。
+ * 任務、掛入、孤兒清理在同一個 batch（D1 為單一交易）；掛入以 INSERT…SELECT 重驗「成員且未封存」，
+ * 條件在檢查後才失效（被移除、被封存）時沒有列寫入，孤兒清理會刪掉剛建的任務。
+ */
+export const createTaskInProject = async (
+	db: Db,
+	a: ProjectActor,
+	projectId: string,
+	input: { title: unknown; dueDate: unknown }
+) => {
+	const { p, role } = await loadViewable(db, a, projectId);
+	if (role === null) throw new ProjectForbiddenError('只有專案成員才能在專案內新增任務');
+	assertWritable(p);
+	let prepared: ReturnType<typeof prepareTask>;
+	try {
+		prepared = prepareTask(db, a.userId, input);
+	} catch (e) {
+		throw e instanceof TaskError ? new ProjectError(e.message) : e;
+	}
+	const { id, insert } = prepared;
+	const [, attached] = await db.batch([
+		insert,
+		db.insert(projectTask).select(
+			db
+				.select({ projectId: project.id, taskId: sql<string>`${id}`.as('task_id') })
+				.from(project)
+				.innerJoin(projectMember, eq(projectMember.projectId, project.id))
+				.where(
+					and(
+						eq(project.id, projectId),
+						eq(projectMember.userId, a.userId),
+						isNull(project.archivedAt)
+					)
+				)
+		),
+		db
+			.delete(task)
+			.where(
+				and(eq(task.id, id), sql`not exists (select 1 from project_task where task_id = ${id})`)
+			)
+	]);
+	if (!attached.meta.changes) throw new ProjectError('專案已封存或你已不是成員，無法新增任務');
+	return id;
 };
 
 export const detachTask = async (db: Db, a: ProjectActor, projectId: string, taskId: string) => {

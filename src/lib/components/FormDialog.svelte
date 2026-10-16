@@ -48,7 +48,7 @@
 					{/if}
 				</div>
 				<Dialog.Close
-					class="-mt-1 -mr-2 grid size-10 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+					class="-mt-1 -mr-2 grid size-11 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
 					aria-label="關閉"><XIcon class="size-5" /></Dialog.Close
 				>
 			</div>

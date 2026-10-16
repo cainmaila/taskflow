@@ -28,6 +28,7 @@
 	let preview = $state<Preview | null>(null);
 	let error = $state('');
 	let ack = $state(false);
+	let mode = $state<'single' | 'tree'>('single');
 
 	// 表單都帶著使用者看到的預覽（expect）；伺服器重算不一致會回 409，這時重抓預覽請使用者再確認
 	const submit: SubmitFunction =
@@ -49,6 +50,7 @@
 			if (!res.ok) throw new Error();
 			preview = await res.json();
 			ack = false;
+			mode = 'single';
 			return true;
 		} catch {
 			error = '無法取得刪除預覽，請再試一次';
@@ -67,64 +69,78 @@
 	<AlertDialog.Content>
 		{#if preview}
 			{@const plan = preview.plan}
+			{@const hasChildren = 'single' in plan}
+			{@const effective = hasChildren ? mode : 'single'}
 			<AlertDialog.Header>
 				<AlertDialog.Title>
-					{'single' in plan ? `這個任務有 ${plan.childCount} 個子任務` : '刪除這個任務？'}
+					{hasChildren ? `這個任務有 ${plan.childCount} 個子任務` : '刪除這個任務？'}
 				</AlertDialog.Title>
 				<AlertDialog.Description>
 					刪除後無法復原。{#if plan.commentCount}將一併刪除 {plan.commentCount} 則留言。{/if}
 				</AlertDialog.Description>
 			</AlertDialog.Header>
 			{#if error}<p class="text-sm text-destructive" role="alert">{error}</p>{/if}
-			{#if !('single' in plan)}
-				<form method="post" action="/tasks/{taskId}?/delete" use:enhance={submit}>
-					<input type="hidden" name="mode" value="single" />
-					<input type="hidden" name="expect" value={preview.keys.single} />
-					<Button type="submit" variant="destructive">確定刪除</Button>
-				</form>
-			{:else}
-				<div class="space-y-5 text-sm">
-					<form
-						method="post"
-						action="/tasks/{taskId}?/delete"
-						use:enhance={submit}
-						class="space-y-2"
+			{#if 'single' in plan}
+				<fieldset class="space-y-2 text-sm">
+					<legend class="sr-only">刪除範圍</legend>
+					<label
+						class="flex min-h-11 cursor-pointer items-start gap-2.5 rounded-lg border border-border p-3 has-[:checked]:border-primary/60 has-[:checked]:bg-primary/10"
 					>
-						<input type="hidden" name="mode" value="single" />
-						<input type="hidden" name="expect" value={preview.keys.single} />
-						<p>
-							只刪除這個任務，子任務保留；將一併刪除 {plan.commentCount} 則留言；{plan.single
-								.becomingTopLevel} 個子任務會失去上層任務並成為頂層任務。
-						</p>
-						<Button type="submit" variant="outline">只刪這個</Button>
-					</form>
-					<form
-						method="post"
-						action="/tasks/{taskId}?/delete"
-						use:enhance={submit}
-						class="space-y-2 border-t pt-4"
+						<input type="radio" bind:group={mode} value="single" class="mt-0.5" />
+						<span
+							><span class="font-medium">只刪除這個任務</span><br />
+							<span class="text-muted-foreground"
+								>子任務保留；{plan.single.becomingTopLevel} 個子任務會失去上層任務並成為頂層任務。</span
+							></span
+						>
+					</label>
+					<label
+						class="flex min-h-11 items-start gap-2.5 rounded-lg border border-border p-3 has-[:checked]:border-destructive/60 has-[:checked]:bg-destructive/10 {plan.tree
+							? 'cursor-pointer'
+							: 'opacity-50'}"
 					>
-						<input type="hidden" name="mode" value="tree" />
-						<input type="hidden" name="expect" value={preview.keys.tree} />
-						{#if plan.tree}
-							<p>
-								連同子任務一起刪除，共 {plan.tree.willDelete} 個任務，將一併刪除 {plan.tree
-									.commentCount} 則留言。共用的 {plan.tree.keptShared} 個子任務會保留，
-								{plan.tree.keptNotMine} 個不是你建立的任務會保留；{plan.tree.becomingTopLevel} 個保留的任務會成為頂層任務。
-							</p>
-							<Label class="flex items-center gap-2 font-normal">
-								<Checkbox bind:checked={ack} />我了解整棵刪除無法復原
-							</Label>
-							<Button type="submit" variant="destructive" disabled={!ack}>整棵刪除</Button>
-						{:else}
-							<p class="text-muted-foreground">子任務過多，無法整棵刪除。</p>
-						{/if}
-					</form>
-				</div>
+						<input
+							type="radio"
+							bind:group={mode}
+							value="tree"
+							disabled={!plan.tree}
+							class="mt-0.5"
+						/>
+						<span>
+							<span class="font-medium">連同子任務一起刪除</span><br />
+							<span class="text-muted-foreground">
+								{#if plan.tree}
+									共 {plan.tree.willDelete} 個任務，將一併刪除 {plan.tree.commentCount} 則留言。共用的
+									{plan.tree.keptShared} 個子任務會保留，{plan.tree.keptNotMine} 個不是你建立的任務會保留；{plan
+										.tree.becomingTopLevel} 個保留的任務會成為頂層任務。
+								{:else}
+									子任務過多，無法整棵刪除。
+								{/if}
+							</span>
+						</span>
+					</label>
+					{#if effective === 'tree'}
+						<Label class="flex min-h-11 items-center gap-2 font-normal">
+							<Checkbox bind:checked={ack} />我了解整棵刪除無法復原
+						</Label>
+					{/if}
+				</fieldset>
 			{/if}
+			<AlertDialog.Footer>
+				<AlertDialog.Cancel>取消</AlertDialog.Cancel>
+				<form method="post" action="/tasks/{taskId}?/delete" use:enhance={submit}>
+					<input type="hidden" name="mode" value={effective} />
+					<input type="hidden" name="expect" value={preview.keys[effective]} />
+					<Button
+						type="submit"
+						variant="destructive"
+						disabled={effective === 'tree' && !ack}
+						class="w-full sm:w-auto">{effective === 'tree' ? '整棵刪除' : '確定刪除'}</Button
+					>
+				</form>
+			</AlertDialog.Footer>
+		{:else}
+			<AlertDialog.Footer><AlertDialog.Cancel>取消</AlertDialog.Cancel></AlertDialog.Footer>
 		{/if}
-		<AlertDialog.Footer>
-			<AlertDialog.Cancel>取消</AlertDialog.Cancel>
-		</AlertDialog.Footer>
 	</AlertDialog.Content>
 </AlertDialog.Root>

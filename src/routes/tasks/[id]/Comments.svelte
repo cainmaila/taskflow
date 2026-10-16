@@ -56,21 +56,24 @@
 	<ul class="space-y-3">
 		{#each comments as c (c.id)}
 			<li class="space-y-2 rounded-xl bg-card p-3.5 ring-1 ring-foreground/10">
-				<div class="flex flex-wrap items-center gap-2 text-sm">
-					<span class="font-medium">{c.authorName}</span>
-					<span class="text-muted-foreground">{fmt(c.createdAt)}</span>
-					{#if c.editedAt}<span class="text-xs text-muted-foreground">（已編輯）</span>{/if}
-					<span class="flex-1"></span>
-					{#if c.canEdit && editingId !== c.id}
-						<Button type="button" size="sm" variant="ghost" onclick={() => (editingId = c.id)}
-							>編輯</Button
-						>
-					{/if}
-					{#if c.canDelete}
-						<Button type="button" size="sm" variant="ghost" onclick={() => (deleting = c)}
-							>刪除</Button
-						>
-					{/if}
+				<div class="flex items-start gap-2 text-sm">
+					<div class="min-w-0 flex-1">
+						<span class="font-medium [overflow-wrap:anywhere]">{c.authorName}</span>
+						<span class="ml-1 text-muted-foreground">{fmt(c.createdAt)}</span>
+						{#if c.editedAt}<span class="text-xs text-muted-foreground">（已編輯）</span>{/if}
+					</div>
+					<div class="-my-1 -mr-1.5 flex shrink-0 items-center">
+						{#if c.canEdit && editingId !== c.id}
+							<Button type="button" size="sm" variant="ghost" onclick={() => (editingId = c.id)}
+								>編輯</Button
+							>
+						{/if}
+						{#if c.canDelete}
+							<Button type="button" size="sm" variant="ghost" onclick={() => (deleting = c)}
+								>刪除</Button
+							>
+						{/if}
+					</div>
 				</div>
 				{#if editingId === c.id}
 					<form
@@ -84,7 +87,20 @@
 						class="space-y-2"
 					>
 						<input type="hidden" name="commentId" value={c.id} />
-						<Textarea name="body" required maxlength={5000} rows={4} value={c.body} />
+						<Textarea
+							name="body"
+							required
+							maxlength={5000}
+							rows={4}
+							value={c.body}
+							onkeydown={(e) => {
+								if (e.key !== 'Escape') return;
+								// 只取消編輯，不要連面板一起關掉
+								e.preventDefault();
+								e.stopPropagation();
+								editingId = null;
+							}}
+						/>
 						{#if err('edit', c.id)}
 							<Alert.Root variant="destructive"
 								><Alert.Description>{form?.message}</Alert.Description></Alert.Root

@@ -6,6 +6,7 @@ import {
 	archiveProject,
 	attachTask,
 	createProject,
+	createTaskInProject,
 	detachTask,
 	getProject,
 	listAddableUsers,
@@ -27,6 +28,7 @@ import {
 	createTask,
 	deleteTask,
 	getTask,
+	listAssignedByMe,
 	listMyTasks,
 	listParents,
 	shareScope,
@@ -142,6 +144,97 @@ describe('listMyProjects card data (D63/D64)', () => {
 		const [p] = await listMyProjects(t.db, mgr);
 		expect(p.memberCount).toBe(5);
 		expect(p.memberPreview).toHaveLength(4);
+	});
+});
+
+describe('createTaskInProject (D59/D60)', () => {
+	it('creates an attached task; admin non-member, outsider and archived are rejected', async () => {
+		const id = await mkProject();
+		const tid = await createTaskInProject(t.db, mem, id, { title: 'Q', dueDate: '2026-10-20' });
+		expect((await listProjectTasks(t.db, mgr, id)).map((x) => x.id)).toEqual([tid]);
+		await expect(
+			createTaskInProject(t.db, admin, id, { title: 'A', dueDate: '2026-10-20' })
+		).rejects.toThrow(ProjectForbiddenError);
+		await expect(
+			createTaskInProject(t.db, out, id, { title: 'O', dueDate: '2026-10-20' })
+		).rejects.toThrow(ProjectNotFoundError);
+		await archiveProject(t.db, mgr, id);
+		await expect(
+			createTaskInProject(t.db, mem, id, { title: 'Z', dueDate: '2026-10-20' })
+		).rejects.toThrow(ProjectError);
+		expect(await t.db.select().from(task).all()).toHaveLength(1);
+	});
+});
+
+describe('task list row extras: projectName / assigneeName (D63)', () => {
+	const base: TaskFilters = { statuses: [], source: 'all', due: 'all' };
+	const today = '2026-10-12';
+	const mine = async (title: string) => {
+		const r = await listMyTasks(t.db, 'mem', base, today);
+		return [...r.active, ...r.done].find((x) => x.title === title)!;
+	};
+	// mgr 建立並指派給 mem（mem 看得到），mgr 再掛進各專案
+	const assigned = async (title: string) => {
+		const id = await mkTask('mgr', title);
+		await updateTask(t.db, 'mgr', id, { assigneeId: 'mem' });
+		return id;
+	};
+
+	it('hides project names the viewer is not a member of', async () => {
+		const secret = await createProject(t.db, mgr, { name: 'Secret' }); // mem 不是成員
+		await attachTask(t.db, mgr, secret, await assigned('X'));
+		expect((await mine('X')).projectName).toBeNull();
+	});
+
+	it('shows the project I belong to when also attached to one I do not', async () => {
+		const secret = await createProject(t.db, mgr, { name: 'A-secret' });
+		const b = await mkProject('B');
+		const id = await assigned('Y');
+		await attachTask(t.db, mgr, secret, id);
+		await attachTask(t.db, mgr, b, id);
+		expect((await mine('Y')).projectName).toBe('B');
+	});
+
+	it('is deterministic (name order) when I belong to several', async () => {
+		const z = await mkProject('Zeta');
+		const a = await mkProject('Alpha');
+		const id = await assigned('Z');
+		await attachTask(t.db, mgr, z, id);
+		await attachTask(t.db, mgr, a, id);
+		expect((await mine('Z')).projectName).toBe('Alpha');
+	});
+
+	it('assigneeName is null without an assignee and set with one', async () => {
+		await mkTask('mem', 'Solo');
+		expect((await mine('Solo')).assigneeName).toBeNull();
+		await assigned('Given');
+		expect((await mine('Given')).assigneeName).toBe('Mem');
+	});
+
+	it('listAssignedByMe keeps the joined assignee name', async () => {
+		await assigned('Out');
+		const r = await listAssignedByMe(t.db, 'mgr', base, today);
+		expect(r.active.find((x) => x.title === 'Out')?.assigneeName).toBe('Mem');
+	});
+});
+
+describe('createTaskInProject race (check → write)', () => {
+	it('rolls back to no orphan task when the project is archived between check and batch', async () => {
+		const id = await mkProject();
+		const racing = new Proxy(t.db, {
+			get: (target, prop, recv) =>
+				prop === 'batch'
+					? async (qs: never) => {
+							await archiveProject(target, mgr, id); // 檢查之後、寫入之前被封存
+							return target.batch(qs);
+						}
+					: Reflect.get(target, prop, recv)
+		}) as typeof t.db;
+		await expect(
+			createTaskInProject(racing, mem, id, { title: 'R', dueDate: '2026-10-20' })
+		).rejects.toThrow(ProjectError);
+		expect(await t.db.select().from(task).all()).toHaveLength(0);
+		expect(await t.db.select().from(projectTask).all()).toHaveLength(0);
 	});
 });
 

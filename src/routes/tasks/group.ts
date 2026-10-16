@@ -38,15 +38,24 @@ export const groupByDue = <T extends { dueDate: string | null }>(rows: T[], toda
 		const k = sectionOf(r.dueDate, today, end);
 		by.set(k, [...(by.get(k) ?? []), r]);
 	}
+	// 逾期段內依日期由舊到新（同日維持原順序，sort 為 stable）
+	by.get('overdue')?.sort((a, b) =>
+		a.dueDate! < b.dueDate! ? -1 : a.dueDate! > b.dueDate! ? 1 : 0
+	);
 	return SECTIONS.flatMap((s) => (by.has(s.key) ? [{ ...s, rows: by.get(s.key)! }] : []));
 };
 
-/** 到期日短標籤：今天／明天／昨天，其餘 M/D（跨年加年份） */
+/** 到期日短標籤：今天／明天／昨天；同一週（週一起算）用「週X」；其餘 M/D（跨年加年份） */
 export const dueLabel = (dueDate: string, today: string) => {
 	const diff = Math.round((parse(dueDate) - parse(today)) / DAY);
 	if (diff === 0) return '今天';
 	if (diff === 1) return '明天';
 	if (diff === -1) return '昨天';
-	const [y, m, d] = dueDate.split('-').map(Number);
-	return dueDate.slice(0, 4) === today.slice(0, 4) ? `${m}/${d}` : `${y}/${m}/${d}`;
+	const t = parse(today);
+	const weekStart = t - ((new Date(t).getUTCDay() + 6) % 7) * DAY;
+	const d = parse(dueDate);
+	// 「週X」只給今天之後、同一週的日期；過去日期用 M/D
+	if (d > t && d < weekStart + 7 * DAY) return `週${'日一二三四五六'[new Date(d).getUTCDay()]}`;
+	const [y, m, day] = dueDate.split('-').map(Number);
+	return dueDate.slice(0, 4) === today.slice(0, 4) ? `${m}/${day}` : `${y}/${m}/${day}`;
 };
