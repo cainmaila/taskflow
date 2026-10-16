@@ -110,6 +110,51 @@ describe('createProject / read (D56, D63)', () => {
 	});
 });
 
+describe('listMyProjects card data (D63/D64)', () => {
+	it('counts tasks and done, previews members, hides other projects', async () => {
+		const id = await mkProject('Card');
+		const other = await createProject(t.db, mgr, { name: 'Other' }); // mem 不是成員
+		const a = await mkTask('mgr', 'A');
+		const b = await mkTask('mgr', 'B');
+		await attachTask(t.db, mgr, id, a);
+		await attachTask(t.db, mgr, id, b);
+		await attachTask(t.db, mgr, other, await mkTask('mgr', 'C'));
+		await updateTask(t.db, 'mgr', b, { status: 'done' });
+
+		const mine = await listMyProjects(t.db, mem);
+		expect(mine).toHaveLength(1); // 非成員的專案與其任務數不外洩
+		expect(mine[0]).toMatchObject({
+			name: 'Card',
+			taskCount: 2,
+			doneCount: 1,
+			memberCount: 2,
+			memberPreview: ['Mem', 'Mgr']
+		});
+		expect((await listMyProjects(t.db, admin)).map((p) => p.taskCount)).toEqual([2, 1]);
+		expect(await listMyProjects(t.db, out)).toEqual([]);
+	});
+
+	it('caps the member preview at 4 but keeps the full count', async () => {
+		const id = await mkProject();
+		for (const u of ['adm', 'out']) await addMember(t.db, mgr, id, u);
+		await t.db.insert(user).values({ id: 'u5', name: 'Zed', email: 'z@x.io' });
+		await addMember(t.db, mgr, id, 'u5');
+		const [p] = await listMyProjects(t.db, mgr);
+		expect(p.memberCount).toBe(5);
+		expect(p.memberPreview).toHaveLength(4);
+	});
+});
+
+describe('listMyProjects with many projects', () => {
+	it('does not exceed D1 bound-parameter limits (>100 projects)', async () => {
+		for (let i = 0; i < 105; i++)
+			await createProject(t.db, mgr, { name: `P${String(i).padStart(3, '0')}` });
+		const list = await listMyProjects(t.db, mgr);
+		expect(list).toHaveLength(105);
+		expect(list.every((p) => p.memberCount === 1 && p.memberPreview.join() === 'Mgr')).toBe(true);
+	});
+});
+
 describe('members (D58, D62)', () => {
 	it('permission matrix: owner/admin manage; member and stranger cannot', async () => {
 		const id = await mkProject();

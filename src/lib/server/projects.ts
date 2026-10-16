@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { getDb } from './db/index';
 import { project, projectMember, projectTask, task, user, type ProjectRole } from './db/schema';
 import {
@@ -72,14 +72,28 @@ export const createProject = async (
 	return id;
 };
 
-/** D63：成員看自己的專案，system_admin 看全部；預設不含封存（D60） */
-export const listMyProjects = (db: Db, a: ProjectActor, opts: { includeArchived?: boolean } = {}) =>
-	db
+/** 卡片用的成員預覽人數上限 */
+const PREVIEW_MEMBERS = 4;
+
+/**
+ * D63：成員看自己的專案，system_admin 看全部；預設不含封存（D60）。
+ * 附帶卡片用的唯讀資料：描述、任務數／完成數（專案內任務對所有可見專案的人一致，D64）、成員預覽。
+ */
+export const listMyProjects = async (
+	db: Db,
+	a: ProjectActor,
+	opts: { includeArchived?: boolean } = {}
+) => {
+	const rows = await db
 		.select({
 			id: project.id,
 			name: project.name,
+			description: project.description,
 			archivedAt: project.archivedAt,
-			myRole: sql<ProjectRole | null>`(select pm.role from project_member pm where pm.project_id = project.id and pm.user_id = ${a.userId})`
+			myRole: sql<ProjectRole | null>`(select pm.role from project_member pm where pm.project_id = project.id and pm.user_id = ${a.userId})`,
+			taskCount: sql<number>`(select count(*) from project_task pt where pt.project_id = project.id)`,
+			doneCount: sql<number>`(select count(*) from project_task pt join task t on t.id = pt.task_id where pt.project_id = project.id and t.status = 'done')`,
+			memberCount: sql<number>`(select count(*) from project_member pm where pm.project_id = project.id)`
 		})
 		.from(project)
 		.where(
@@ -92,6 +106,33 @@ export const listMyProjects = (db: Db, a: ProjectActor, opts: { includeArchived?
 		)
 		.orderBy(asc(project.name), desc(project.createdAt))
 		.all();
+	if (!rows.length) return [];
+	// 只查結果裡這些專案（已過可見性篩選）的成員；D1 單一查詢最多 100 個綁定參數，故分批
+	const ms: { projectId: string; name: string }[] = [];
+	for (let i = 0; i < rows.length; i += 90) {
+		ms.push(
+			...(await db
+				.select({ projectId: projectMember.projectId, name: user.name })
+				.from(projectMember)
+				.innerJoin(user, eq(user.id, projectMember.userId))
+				.where(
+					inArray(
+						projectMember.projectId,
+						rows.slice(i, i + 90).map((r) => r.id)
+					)
+				)
+				.orderBy(asc(user.name))
+				.all())
+		);
+	}
+	return rows.map((r) => ({
+		...r,
+		memberPreview: ms
+			.filter((m) => m.projectId === r.id)
+			.slice(0, PREVIEW_MEMBERS)
+			.map((m) => m.name)
+	}));
+};
 
 export const getProject = async (db: Db, a: ProjectActor, projectId: string) => {
 	const { p, role } = await loadViewable(db, a, projectId);
