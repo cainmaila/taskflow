@@ -439,3 +439,23 @@
 - `database_id` 直接提交（非機密）；自架者需自行 `wrangler d1 create` 並替換。
 - `pnpm build` 時 SvelteKit 會驗證 `ORIGIN`、`BETTER_AUTH_SECRET` 有設定（值不會打進產物），沒有 `.env` 時要帶假值。
 - 先用 Workers Free + D1 Free。風險：scrypt 密碼雜湊與 DAG 遞迴查詢可能超過 Free 的 CPU 限制，實測有問題再升級 Workers Paid。
+
+## D73：Board 視圖與四欄狀態
+
+- 「我的任務」「我指派的」「專案頁」可用 `?view=board` 切成看板：四欄依狀態（待辦、進行中、擱置、完成），其他篩選照舊套用。清單為預設，切換時保留篩選參數。
+- 拖曳到別欄＝改狀態，與表單改狀態走同一套驗證，D66（有未完成子任務不能標完成）照樣擋，被擋時卡片回彈並顯示 server 的原文。
+- 鍵盤與觸控替代：卡片上的狀態選單，加上空白鍵起拖、方向鍵移動的鍵盤拖曳。
+
+## D74：任務排序全體共用，存 `task.position`
+
+- `task.position` 為 REAL，小的在前；所有人、所有清單（清單、看板、子任務、專案任務）看到同一個順序，不分人各自一份。取代原本的 `due_date, created_at` 排序。
+- 移動時 client 只送相鄰卡片的 id（`afterId`／`beforeId`），server 取兩者 position 的中點；排最前或最後則 ±1024。新任務排在最後（`max(position) + 1024`）。
+- shortcut：兩鄰居間距 < 1e-6 時，server 把全部任務依 `(position, id)` 重編成 1024 的倍數再算。相對順序不變，所以對每個人可見的子集都安全；任務量極大時再改 fractional index。
+- migration 0009 以 `row_number() over (order by due_date, created_at, id) * 1024` 回填，既有順序不變。
+
+## D75：誰能排序
+
+- 能移動一張卡片 = 該任務自身的建立者／指派人，或它任一祖先的建立者／指派人（沿 D14 的祖先鏈）。頂層任務只看自身。祖先有編輯權就必然看得到自己，所以不另外檢查可見性。
+- 只改被移動那一張的 position，不碰其他人的任務。僅專案成員不能（D45）；不可見者視同找不到（D14／D64）。
+- 跨欄改狀態另需任務自身的編輯權（D45）並通過 D66：父任務的編輯者能調整子任務的順序，但不能改它的狀態。
+- 清單回傳的 `canMove` 旗標與 `moveTask` 共用同一段 SQL，前端據此停用拖曳，規則不會分叉。

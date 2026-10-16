@@ -1,12 +1,15 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
-import { task, taskParent, user } from './db/schema';
+import { readFileSync } from 'node:fs';
+import { eq, sql } from 'drizzle-orm';
+import { project, projectMember, projectTask, task, taskParent, user } from './db/schema';
 import {
 	createTask,
 	deleteTask,
 	ensurePersonalRoot,
 	getTask,
+	listChildren,
 	listMyTasks,
+	moveTask,
 	TaskError,
 	TaskForbiddenError,
 	TaskNotFoundError,
@@ -23,6 +26,7 @@ const all: TaskFilters = { statuses: [], source: 'all', due: 'all' };
 const today = '2026-10-12';
 
 beforeEach(async () => {
+	await t.db.delete(project);
 	await t.db.delete(taskParent);
 	await t.db.delete(task);
 	await t.db.delete(user);
@@ -114,9 +118,10 @@ describe('listMyTasks', () => {
 		await updateTask(t.db, 'u2', fromBob, { assigneeId: 'u1' });
 		const { active, done } = await listMyTasks(t.db, 'u1', all, today);
 		expect(active.map((r) => [r.id, r.source])).toEqual([
+			// D74：依 position（建立順序），不再依到期日
+			[own, 'own'],
 			[both, 'own'],
-			[fromBob, 'assigned'],
-			[own, 'own']
+			[fromBob, 'assigned']
 		]);
 		expect(done).toEqual([]);
 		expect(active.every((r) => r.rootOwnerId === null)).toBe(true);
@@ -191,5 +196,221 @@ describe('permissions', () => {
 		expect(await t.db.select().from(taskParent).where(eq(taskParent.childId, id)).all()).toEqual(
 			[]
 		);
+	});
+});
+
+describe('moveTask (D73–D75)', () => {
+	const order = async (u = 'u1') =>
+		(await listMyTasks(t.db, u, all, today)).active.map((r) => r.title);
+	const idOf = async (title: string) =>
+		(await t.db.select().from(task).where(eq(task.title, title)).get())!.id;
+	const posOf = async (title: string) =>
+		(await t.db.select().from(task).where(eq(task.title, title)).get())!.position;
+	const seed = async () => {
+		for (const n of ['a', 'b', 'c']) await mk('u1', n);
+	};
+
+	it('new tasks go last; lists follow position, not due date', async () => {
+		await mk('u1', 'late', '2026-12-01');
+		await mk('u1', 'early', '2026-10-13');
+		expect(await order()).toEqual(['late', 'early']);
+	});
+
+	it('places between neighbours (midpoint), at the head and at the tail', async () => {
+		await seed();
+		await moveTask(t.db, 'u1', await idOf('c'), {
+			afterId: await idOf('a'),
+			beforeId: await idOf('b')
+		});
+		expect(await order()).toEqual(['a', 'c', 'b']);
+		expect(await posOf('c')).toBe(((await posOf('a')) + (await posOf('b'))) / 2);
+		await moveTask(t.db, 'u1', await idOf('c'), { beforeId: await idOf('a') });
+		expect(await order()).toEqual(['c', 'a', 'b']);
+		await moveTask(t.db, 'u1', await idOf('c'), { afterId: await idOf('b') });
+		expect(await order()).toEqual(['a', 'b', 'c']);
+		await mk('u1', 'd');
+		expect(await order()).toEqual(['a', 'b', 'c', 'd']);
+	});
+
+	it('renumbers when the gap between neighbours is too small', async () => {
+		await seed();
+		await t.db
+			.update(task)
+			.set({ position: 1 })
+			.where(eq(task.id, await idOf('a')));
+		await t.db
+			.update(task)
+			.set({ position: 1 + 1e-9 })
+			.where(eq(task.id, await idOf('b')));
+		await moveTask(t.db, 'u1', await idOf('c'), {
+			afterId: await idOf('a'),
+			beforeId: await idOf('b')
+		});
+		expect(await order()).toEqual(['a', 'c', 'b']);
+		const pos = [await posOf('a'), await posOf('c'), await posOf('b')];
+		expect(pos.every((p) => p % 1024 === 0 || (p * 2) % 1024 === 0)).toBe(true);
+		expect(pos[1] - pos[0]).toBeGreaterThan(1);
+		expect(pos[2] - pos[1]).toBeGreaterThan(1);
+	});
+
+	it('rejects stale or invalid neighbours', async () => {
+		await seed();
+		const [a, b, c] = [await idOf('a'), await idOf('b'), await idOf('c')];
+		await expect(moveTask(t.db, 'u1', c, { afterId: c })).rejects.toThrow(TaskError);
+		await expect(moveTask(t.db, 'u1', c, { afterId: 'ghost' })).rejects.toThrow(TaskError);
+		// 順序顛倒（client 資料過期）
+		await expect(moveTask(t.db, 'u1', c, { afterId: b, beforeId: a })).rejects.toThrow(TaskError);
+		expect(await order()).toEqual(['a', 'b', 'c']);
+		// 看不到的任務當鄰居也等同不存在
+		const other = await mk('u2', 'x');
+		await expect(moveTask(t.db, 'u1', c, { afterId: other })).rejects.toThrow(TaskError);
+	});
+
+	it('own editor and assignee may move; invisible user gets not-found', async () => {
+		const id = await mk('u1', 'a');
+		await mk('u1', 'b');
+		await updateTask(t.db, 'u1', id, { assigneeId: 'u2' });
+		await updateTask(t.db, 'u1', await idOf('b'), { assigneeId: 'u2' });
+		const before = await posOf('a');
+		await moveTask(t.db, 'u2', id, { afterId: await idOf('b') });
+		expect(await posOf('a')).toBeGreaterThan(before);
+		await expect(moveTask(t.db, 'u3', id, { afterId: await idOf('b') })).rejects.toThrow(
+			TaskNotFoundError
+		);
+	});
+
+	it('a parent editor may reorder a child but not change its status', async () => {
+		const p = await mk('u1', 'P');
+		await updateTask(t.db, 'u1', p, { assigneeId: 'u2' });
+		const c1 = await createTask(t.db, 'u2', { title: 'c1', dueDate: '2026-10-20', parentId: p });
+		const c2 = await createTask(t.db, 'u2', { title: 'c2', dueDate: '2026-10-20', parentId: p });
+		await moveTask(t.db, 'u1', c2, { beforeId: c1 });
+		expect((await listChildren(t.db, 'u1', p)).map((r) => r.title)).toEqual(['c2', 'c1']);
+		await expect(moveTask(t.db, 'u1', c2, { status: 'in_progress' })).rejects.toThrow(
+			TaskForbiddenError
+		);
+		expect((await getTask(t.db, 'u2', c2)).status).toBe('todo');
+		// canMove 旗標與 moveTask 同一套規則
+		expect((await listChildren(t.db, 'u1', p)).every((r) => r.canMove)).toBe(true);
+		expect((await listChildren(t.db, 'u2', p)).every((r) => r.canMove)).toBe(true);
+	});
+
+	it('a project member alone may not move (D45)', async () => {
+		const id = await mk('u1', 'a');
+		const other = await mk('u1', 'b');
+		await t.db.insert(project).values({ id: 'p1', name: 'P', createdBy: 'u1' });
+		await t.db.insert(projectMember).values({ projectId: 'p1', userId: 'u3', role: 'member' });
+		await t.db.insert(projectTask).values({ projectId: 'p1', taskId: id });
+		const pos = await posOf('a');
+		expect((await getTask(t.db, 'u3', id)).id).toBe(id);
+		await expect(moveTask(t.db, 'u3', id, { afterId: other })).rejects.toThrow(TaskForbiddenError);
+		expect(await posOf('a')).toBe(pos);
+	});
+
+	it('moves across columns; D66 blocks done and leaves status and position unchanged', async () => {
+		const p = await mk('u1', 'P');
+		await createTask(t.db, 'u1', { title: 'kid', dueDate: '2026-10-20', parentId: p });
+		const other = await mk('u1', 'z');
+		const pos = await posOf('P');
+		await expect(moveTask(t.db, 'u1', p, { status: 'done', afterId: other })).rejects.toThrow(
+			'還有 1 個子任務未完成'
+		);
+		expect(await getTask(t.db, 'u1', p)).toMatchObject({ status: 'todo', position: pos });
+		await expect(moveTask(t.db, 'u1', p, { status: 'nope' })).rejects.toThrow(TaskError);
+		await moveTask(t.db, 'u1', p, { status: 'in_progress', afterId: other });
+		expect(await getTask(t.db, 'u1', p)).toMatchObject({ status: 'in_progress' });
+		expect(await posOf('P')).toBeGreaterThan(await posOf('z'));
+	});
+});
+
+describe('moveTask edge cases', () => {
+	const posOf = async (id: string) => (await getTask(t.db, 'u1', id)).position;
+
+	it('grandparent editor may reorder a grandchild but not change its status; flags match', async () => {
+		const g = await mk('u1', 'G');
+		await updateTask(t.db, 'u1', g, { assigneeId: 'u2' });
+		const p = await createTask(t.db, 'u1', { title: 'P', dueDate: '2026-10-20', parentId: g });
+		const c1 = await createTask(t.db, 'u1', { title: 'c1', dueDate: '2026-10-20', parentId: p });
+		const c2 = await createTask(t.db, 'u1', { title: 'c2', dueDate: '2026-10-20', parentId: p });
+		await t.db.update(task).set({ createdBy: 'u3' }).where(eq(task.id, p));
+		await t.db.update(task).set({ createdBy: 'u3' }).where(eq(task.id, c1));
+		await t.db.update(task).set({ createdBy: 'u3' }).where(eq(task.id, c2));
+		await moveTask(t.db, 'u2', c2, { beforeId: c1 });
+		expect((await listChildren(t.db, 'u2', p)).map((r) => r.title)).toEqual(['c2', 'c1']);
+		await expect(moveTask(t.db, 'u2', c2, { status: 'in_progress' })).rejects.toThrow(
+			TaskForbiddenError
+		);
+		expect((await t.db.select().from(task).where(eq(task.id, c2)).get())!.status).toBe('todo');
+		const flags = (await listChildren(t.db, 'u2', p)).map((r) => [r.canMove, r.canChangeStatus]);
+		expect(flags).toEqual([
+			[true, false],
+			[true, false]
+		]);
+		const owner = (await listChildren(t.db, 'u3', p)).map((r) => [r.canMove, r.canChangeStatus]);
+		expect(owner).toEqual([
+			[true, true],
+			[true, true]
+		]);
+	});
+
+	it('hidden ancestors: assignee of a child moves it but cannot use invisible neighbours', async () => {
+		const p = await mk('u1', 'P');
+		const c = await createTask(t.db, 'u1', { title: 'c', dueDate: '2026-10-20', parentId: p });
+		await updateTask(t.db, 'u1', c, { assigneeId: 'u2' });
+		await expect(moveTask(t.db, 'u3', c, { afterId: c })).rejects.toThrow(TaskNotFoundError);
+		await expect(moveTask(t.db, 'u2', c, { afterId: p })).rejects.toThrow(TaskError);
+		const pos = (await t.db.select().from(task).where(eq(task.id, c)).get())!.position;
+		await moveTask(t.db, 'u2', c, { status: 'in_progress' });
+		expect((await t.db.select().from(task).where(eq(task.id, c)).get())!.position).toBe(pos);
+		// 父任務對 u2 不可見，其編輯權也與 u2 無關
+		await expect(moveTask(t.db, 'u2', p, {})).rejects.toThrow(TaskNotFoundError);
+	});
+
+	it('creator can still move a task whose assignee is banned', async () => {
+		const a = await mk('u1', 'a');
+		const b = await mk('u1', 'b');
+		await t.db.update(task).set({ assigneeId: 'ban' }).where(eq(task.id, a));
+		await moveTask(t.db, 'u1', a, { afterId: b });
+		expect(await posOf(a)).toBeGreaterThan(await posOf(b));
+	});
+
+	it('tasks in an archived project can still be reordered (D64)', async () => {
+		const a = await mk('u1', 'a');
+		const b = await mk('u1', 'b');
+		await t.db
+			.insert(project)
+			.values({ id: 'pa', name: 'P', createdBy: 'u1', archivedAt: new Date() });
+		await t.db.insert(projectMember).values({ projectId: 'pa', userId: 'u1', role: 'owner' });
+		await t.db.insert(projectTask).values([
+			{ projectId: 'pa', taskId: a },
+			{ projectId: 'pa', taskId: b }
+		]);
+		await moveTask(t.db, 'u1', a, { afterId: b });
+		expect(await posOf(a)).toBeGreaterThan(await posOf(b));
+	});
+});
+
+describe('migration 0009 backfill', () => {
+	it('keeps the old (due_date, created_at) order and skips personal roots', async () => {
+		const file = readFileSync('drizzle/0009_task_position.sql', 'utf8');
+		const backfill = file
+			.split('--> statement-breakpoint')
+			.pop()!
+			.replace(/^-- .*$/gm, '');
+		const rows = [
+			['c', '2026-10-20', 3],
+			['a', '2026-10-10', 9],
+			['b', '2026-10-20', 1],
+			['d', '2026-11-01', 0]
+		] as const;
+		for (const [id, dueDate, ts] of rows)
+			await t.db
+				.insert(task)
+				.values({ id, title: id, dueDate, createdBy: 'u1', createdAt: new Date(ts) });
+		const root = await ensurePersonalRoot(t.db, 'u1');
+		await t.db.run(sql.raw(backfill.replaceAll('\n', ' ')));
+		const ordered = await t.db.select().from(task).orderBy(task.position).all();
+		expect(ordered.filter((r) => r.id !== root).map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
+		expect(ordered.find((r) => r.id === root)!.position).toBe(0);
 	});
 });

@@ -4,6 +4,7 @@ import {
 	index,
 	integer,
 	primaryKey,
+	real,
 	sqliteTable,
 	text,
 	uniqueIndex
@@ -26,6 +27,8 @@ export const task = sqliteTable(
 		// ISO 日期 YYYY-MM-DD
 		startDate: text('start_date'),
 		dueDate: text('due_date'),
+		// D74：全體共用的手動排序，小的在前；REAL 中點插入
+		position: real('position').notNull().default(0),
 		createdBy: text('created_by')
 			.notNull()
 			.references(() => user.id),

@@ -13,7 +13,7 @@ import {
 	validateDescription,
 	validateName
 } from './project-rules';
-import { getTask, listColumns, TaskNotFoundError } from './tasks';
+import { moveFlags, getTask, listColumns, TaskNotFoundError } from './tasks';
 
 export { ProjectError, ProjectForbiddenError, ProjectNotFoundError };
 
@@ -235,11 +235,11 @@ export const detachTask = async (db: Db, a: ProjectActor, projectId: string, tas
 export const listProjectTasks = async (db: Db, a: ProjectActor, projectId: string) => {
 	const { p, role } = await loadViewable(db, a, projectId);
 	const rows = await db
-		.select(listColumns)
+		.select({ ...listColumns, ...moveFlags(a.userId) })
 		.from(projectTask)
 		.innerJoin(task, eq(task.id, projectTask.taskId))
 		.where(eq(projectTask.projectId, projectId))
-		.orderBy(asc(task.dueDate), asc(task.createdAt))
+		.orderBy(asc(task.position), asc(task.id))
 		.all();
 	return rows.map((t) => ({
 		...t,
