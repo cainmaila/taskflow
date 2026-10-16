@@ -8,12 +8,15 @@
 	let {
 		filters,
 		showSource = true,
+		board = false,
 		projects = [],
 		clearHref
 	}: {
 		filters: { statuses: string[]; source: string; due: string; projectId?: string };
 		projects?: { id: string; name: string }[];
 		showSource?: boolean;
+		// 看板檢視：切換篩選時保留 ?view=board
+		board?: boolean;
 		clearHref: string;
 	} = $props();
 
@@ -36,6 +39,7 @@
 </script>
 
 <form method="get" onchange={apply} class="flex flex-wrap items-center gap-x-2 gap-y-2">
+	{#if board}<input type="hidden" name="view" value="board" />{/if}
 	<fieldset class="flex flex-wrap items-center gap-1.5">
 		<legend class="sr-only">狀態</legend>
 		{#each Object.entries(statusLabel) as [value, label] (value)}
@@ -77,7 +81,12 @@
 		{/if}
 		<noscript><Button type="submit" variant="secondary" size="sm">篩選</Button></noscript>
 		{#if active}
-			<Button href={clearHref} variant="ghost" size="sm" class="text-muted-foreground">清除</Button>
+			<Button
+				href={board ? `${clearHref}?view=board` : clearHref}
+				variant="ghost"
+				size="sm"
+				class="text-muted-foreground">清除</Button
+			>
 		{/if}
 	</div>
 </form>

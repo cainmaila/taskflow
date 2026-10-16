@@ -26,6 +26,8 @@ export { TaskConflictError, TaskError, TaskForbiddenError, TaskNotFoundError };
 
 type Db = ReturnType<typeof getDb>;
 
+const POSITION_STEP = 1024;
+
 /** D41：懶建立、冪等；併發時靠 root_owner_id 唯一索引擋下，輸家重讀 */
 export const ensurePersonalRoot = async (db: Db, userId: string) => {
 	const find = () =>
@@ -100,15 +102,17 @@ export const createTask = async (
 	const dueDate = typeof input.dueDate === 'string' ? input.dueDate : null;
 	validateDates(null, dueDate);
 	const id = crypto.randomUUID();
+	// D74：新任務排最後
+	const position = sql<number>`(select coalesce(max(position), 0) + ${POSITION_STEP} from task)`;
 	if (input.parentId === undefined) {
 		// D49：頂層任務沒有 task_parent 列
-		await db.insert(task).values({ id, title, dueDate, createdBy: userId });
+		await db.insert(task).values({ id, title, dueDate, createdBy: userId, position });
 		return id;
 	}
 	await loadVisible(db, userId, input.parentId);
 	// batch 在 D1 為單一交易：任務與其 parent 關聯同生同滅
 	await db.batch([
-		db.insert(task).values({ id, title, dueDate, createdBy: userId }),
+		db.insert(task).values({ id, title, dueDate, createdBy: userId, position }),
 		db.insert(taskParent).values({ parentId: input.parentId, childId: id })
 	]);
 	return id;
@@ -125,6 +129,27 @@ const counts = {
 };
 export const listColumns = { ...getTableColumns(task), ...counts };
 
+/**
+ * D75：能不能排序這張卡片 = 自身或任一祖先的建立者／指派人（祖先有編輯權就一定看得到它自己，
+ * 所以不必另外檢查可見性）。列表的 canMove 旗標與 moveTask 共用這一段，規則不會分叉。
+ */
+export const moveFlags = (userId: string) => ({
+	canMove: canMoveCol(userId),
+	// 跨欄改狀態需自身編輯權（D45，與 moveTask 同一份規則）；祖先編輯者只能調整順序
+	canChangeStatus:
+		sql<boolean>`(task.created_by = ${userId} or coalesce(task.assignee_id, '') = ${userId})`.mapWith(
+			Boolean
+		)
+});
+
+const canMoveCol = (userId: string) =>
+	sql<boolean>`exists (
+		with recursive anc(id) as (
+			select task.id union select tp.parent_id from task_parent tp join anc on tp.child_id = anc.id
+		)
+		select 1 from task a where a.id in (select id from anc)
+			and (a.created_by = ${userId} or a.assignee_id = ${userId}))`.mapWith(Boolean);
+
 /** D43：掛在 projectId 且我是該專案成員；不是成員就不會有任何列（不洩漏專案存在與否） */
 const inMyProject = (userId: string, projectId?: string) =>
 	projectId
@@ -135,7 +160,7 @@ const inMyProject = (userId: string, projectId?: string) =>
 /** D49：頂層（沒有 parent）且歸屬者是我，或指派給我的任務 */
 export const listMyTasks = async (db: Db, userId: string, filters: TaskFilters, today: string) => {
 	const rows = await db
-		.select(listColumns)
+		.select({ ...listColumns, ...moveFlags(userId) })
 		.from(task)
 		.where(
 			and(
@@ -147,7 +172,7 @@ export const listMyTasks = async (db: Db, userId: string, filters: TaskFilters, 
 				inMyProject(userId, filters.projectId)
 			)
 		)
-		.orderBy(asc(task.dueDate), asc(task.createdAt))
+		.orderBy(asc(task.position), asc(task.id))
 		.all();
 	// shortcut: 在記憶體篩選（約 15 人的規模），資料量變大時把條件下推到 SQL
 	return applyFilters(
@@ -168,7 +193,7 @@ export const listAssignedByMe = async (
 	today: string
 ) => {
 	const rows = await db
-		.select({ ...listColumns, assigneeName: user.name })
+		.select({ ...listColumns, ...moveFlags(userId), assigneeName: user.name })
 		.from(task)
 		.innerJoin(user, eq(user.id, task.assigneeId))
 		.where(
@@ -179,7 +204,7 @@ export const listAssignedByMe = async (
 				inMyProject(userId, filters.projectId)
 			)
 		)
-		.orderBy(asc(task.dueDate), asc(task.createdAt))
+		.orderBy(asc(task.position), asc(task.id))
 		.all();
 	return applyFilters(
 		rows.map((r) => ({ ...r, source: 'own' as TaskSource })),
@@ -192,11 +217,11 @@ export const listAssignedByMe = async (
 export const listChildren = async (db: Db, userId: string, taskId: string) => {
 	await loadVisible(db, userId, taskId);
 	return db
-		.select(listColumns)
+		.select({ ...listColumns, ...moveFlags(userId) })
 		.from(taskParent)
 		.innerJoin(task, eq(task.id, taskParent.childId))
 		.where(eq(taskParent.parentId, taskId))
-		.orderBy(asc(task.dueDate), asc(task.createdAt))
+		.orderBy(asc(task.position), asc(task.id))
 		.all();
 };
 
@@ -335,6 +360,20 @@ export type TaskPatch = {
 	assigneeId?: unknown;
 };
 
+/** 狀態驗證（含 D66）；updateTask 與 moveTask 共用 */
+const checkStatus = async (db: Db, t: { id: string; status: string }, status: unknown) => {
+	if (!isStatus(status)) throw new TaskError('狀態不正確');
+	if (status === 'done' && t.status !== 'done') {
+		// D66：只擋標記完成那一刻；含看不到的子任務，只洩漏數量
+		// shortcut: 檢查與寫入非原子，併發掛上子任務可漏過，出問題再併入 update 的 not exists
+		const [{ n }] = await db.all<{ n: number }>(sql`
+			select count(*) as n from task_parent tp join task c on c.id = tp.child_id
+			where tp.parent_id = ${t.id} and c.status != 'done'`);
+		if (n > 0) throw new TaskError(`還有 ${n} 個子任務未完成`);
+	}
+	return status as TaskStatus;
+};
+
 export const updateTask = async (db: Db, userId: string, id: string, patch: TaskPatch) => {
 	const t = await loadVisible(db, userId, id);
 	const actor = { userId };
@@ -347,18 +386,7 @@ export const updateTask = async (db: Db, userId: string, id: string, patch: Task
 		if (patch.description.length > DESC_MAX) throw new TaskError(`描述最多 ${DESC_MAX} 字`);
 		set.description = patch.description;
 	}
-	if (patch.status !== undefined) {
-		if (!isStatus(patch.status)) throw new TaskError('狀態不正確');
-		if (patch.status === 'done' && t.status !== 'done') {
-			// D66：只擋標記完成那一刻；含看不到的子任務，只洩漏數量
-			// shortcut: 檢查與寫入非原子，併發掛上子任務可漏過，出問題再併入 update 的 not exists
-			const [{ n }] = await db.all<{ n: number }>(sql`
-				select count(*) as n from task_parent tp join task c on c.id = tp.child_id
-				where tp.parent_id = ${id} and c.status != 'done'`);
-			if (n > 0) throw new TaskError(`還有 ${n} 個子任務未完成`);
-		}
-		set.status = patch.status as TaskStatus;
-	}
+	if (patch.status !== undefined) set.status = await checkStatus(db, t, patch.status);
 	const startDate =
 		patch.startDate === undefined ? t.startDate : (patch.startDate as string | null) || null;
 	const dueDate =
@@ -383,6 +411,67 @@ export const updateTask = async (db: Db, userId: string, id: string, patch: Task
 		}
 	}
 	await db.update(task).set(set).where(eq(task.id, id));
+};
+
+// ---- 排序（D73–D75）----
+
+const MIN_GAP = 1e-6;
+
+/** 全部任務依 (position, id) 重編成 1024 的倍數；相對順序不變，所以對任何人的可見子集都安全 */
+const renumber = (db: Db) =>
+	db.run(sql`update task set position = r.rn
+		from (select id, row_number() over (order by position, id) * ${POSITION_STEP} as rn
+			from task where root_owner_id is null) r
+		where r.id = task.id`);
+
+const neighborPosition = async (db: Db, userId: string, id: string, neighborId?: string) => {
+	if (!neighborId) return null;
+	if (neighborId === id) throw new TaskError('排序位置不正確');
+	try {
+		return (await loadVisible(db, userId, neighborId)).position;
+	} catch (e) {
+		if (e instanceof TaskNotFoundError) throw new TaskError('相鄰的任務已變動，請重新整理');
+		throw e;
+	}
+};
+
+/**
+ * 把任務排到 afterId 之後、beforeId 之前（欄內的相鄰卡片），可同時改狀態（跨欄）。
+ * 位置由 server 依鄰居算，避免 client 資料過期。權限見 D75；改狀態另需自身編輯權與 D66。
+ * 只改被移動的那一張。
+ */
+export const moveTask = async (
+	db: Db,
+	userId: string,
+	id: string,
+	input: { afterId?: string; beforeId?: string; status?: unknown }
+) => {
+	const t = await loadVisible(db, userId, id);
+	const ok = await db
+		.select({ ok: canMoveCol(userId) })
+		.from(task)
+		.where(eq(task.id, id))
+		.get();
+	if (!ok?.ok) throw new TaskForbiddenError('沒有權限');
+	const set: Partial<typeof task.$inferInsert> = {};
+	if (input.status !== undefined && input.status !== t.status) {
+		if (!canEdit(t, { userId })) throw new TaskForbiddenError('沒有權限');
+		set.status = await checkStatus(db, t, input.status);
+		set.updatedAt = new Date();
+	}
+	let after = await neighborPosition(db, userId, id, input.afterId);
+	let before = await neighborPosition(db, userId, id, input.beforeId);
+	if (after !== null && before !== null && before - after < MIN_GAP) {
+		// shortcut: REAL 中點，間距過小時整欄重編號，若欄位極大再改 fractional index
+		await renumber(db);
+		after = await neighborPosition(db, userId, id, input.afterId);
+		before = await neighborPosition(db, userId, id, input.beforeId);
+		if (before! - after! <= 0) throw new TaskError('排序已變動，請重新整理後再試');
+	}
+	if (after !== null && before !== null) set.position = (after + before) / 2;
+	else if (after !== null) set.position = after + POSITION_STEP;
+	else if (before !== null) set.position = before - POSITION_STEP;
+	if (Object.keys(set).length) await db.update(task).set(set).where(eq(task.id, id));
 };
 
 // ---- 刪除（D46/D53–D55）----

@@ -14,6 +14,7 @@ import {
 	getTask,
 	listChildren,
 	listParents,
+	moveTask,
 	TaskConflictError,
 	TaskError,
 	TaskForbiddenError,
@@ -90,6 +91,23 @@ export const actions: Actions = {
 			return failure(e);
 		}
 		return { saved: true };
+	},
+	// D73–D75：拖曳排序／跨欄改狀態；位置由 server 依相鄰卡片算
+	move: async ({ request, locals, params }) => {
+		const me = locals.user;
+		if (!me) redirect(302, '/login');
+		const form = await request.formData();
+		const get = (k: string) => form.get(k)?.toString() || undefined;
+		try {
+			await moveTask(getDb(env.DB), me.id, params.id, {
+				afterId: get('afterId'),
+				beforeId: get('beforeId'),
+				status: get('status')
+			});
+		} catch (e) {
+			return failure(e);
+		}
+		return { moved: true };
 	},
 	addChild: async ({ request, locals, params }) => {
 		const me = locals.user;

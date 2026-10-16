@@ -11,11 +11,16 @@
 	import { Textarea } from '#lib/components/ui/textarea/index.js';
 	import { renderMarkdown } from '#lib/markdown.js';
 	import ConfirmDialog from '../../ConfirmDialog.svelte';
+	import Board from '../../tasks/Board.svelte';
+	import TaskPanel from '../../tasks/TaskPanel.svelte';
 	import TaskRow from '../../tasks/TaskRow.svelte';
+	import ViewToggle from '../../tasks/ViewToggle.svelte';
+	import { page } from '$app/state';
 	import type { PageProps } from './$types';
 
 	let { data, form }: PageProps = $props();
 
+	const board = $derived(page.url.searchParams.get('view') === 'board');
 	const p = $derived(data.project);
 	const archived = $derived(!!p.archivedAt);
 	// 寫入控制只在有管理權限且未封存時出現（權限仍以 server 為準）
@@ -41,7 +46,7 @@
 
 <svelte:head><title>{p.name} - Taskflow</title></svelte:head>
 
-<main class="mx-auto max-w-4xl space-y-6 px-4 py-6 md:px-8 md:py-10">
+<main class="mx-auto space-y-6 px-4 py-6 md:px-8 md:py-10 {board ? 'max-w-7xl' : 'max-w-4xl'}">
 	<a href={resolve('/projects')} class="text-sm text-muted-foreground hover:text-foreground"
 		>← 專案</a
 	>
@@ -174,28 +179,39 @@
 	</section>
 
 	<section class="space-y-3">
-		<h2 class="text-lg font-semibold">任務</h2>
+		<div class="flex flex-wrap items-center justify-between gap-3">
+			<h2 class="text-lg font-semibold">任務</h2>
+			<ViewToggle />
+		</div>
 		{@render notice('tasks')}
-		<Card.Root>
-			<Card.Content class="divide-y">
-				{#each data.tasks as t (t.id)}
-					<div class="flex items-center gap-2">
-						<div class="min-w-0 flex-1">
-							<TaskRow {t} today={data.today} />
+		{#if board}
+			<Board
+				rows={data.tasks}
+				today={data.today}
+				ondetach={(t) => (detaching = data.tasks.find((x) => x.id === t.id) ?? null)}
+			/>
+		{:else}
+			<Card.Root>
+				<Card.Content class="divide-y">
+					{#each data.tasks as t (t.id)}
+						<div class="flex items-center gap-2">
+							<div class="min-w-0 flex-1">
+								<TaskRow {t} today={data.today} />
+							</div>
+							{#if t.canDetach}
+								<Button type="button" size="sm" variant="outline" onclick={() => (detaching = t)}
+									>取消掛接</Button
+								>
+							{/if}
 						</div>
-						{#if t.canDetach}
-							<Button type="button" size="sm" variant="outline" onclick={() => (detaching = t)}
-								>取消掛接</Button
-							>
-						{/if}
-					</div>
-				{:else}
-					<p class="py-3 text-sm text-muted-foreground">
-						還沒有任務。到任務的詳情頁，把任務掛進這個專案。
-					</p>
-				{/each}
-			</Card.Content>
-		</Card.Root>
+					{:else}
+						<p class="py-3 text-sm text-muted-foreground">
+							還沒有任務。到任務的詳情頁，把任務掛進這個專案。
+						</p>
+					{/each}
+				</Card.Content>
+			</Card.Root>
+		{/if}
 	</section>
 
 	<ConfirmDialog
@@ -222,3 +238,5 @@
 		fields={{ taskId: detaching?.id ?? '' }}
 	/>
 </main>
+
+{#if board}<TaskPanel />{/if}
