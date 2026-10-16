@@ -149,7 +149,7 @@
 		<span class="font-semibold tracking-tight">Taskflow</span>
 		<span class="ml-auto max-w-32 truncate text-sm text-muted-foreground">{data.user.name}</span>
 		{@render signOut(
-			'grid size-10 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
+			'grid size-11 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground'
 		)}
 	</header>
 

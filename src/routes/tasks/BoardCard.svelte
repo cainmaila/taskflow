@@ -42,14 +42,14 @@
 
 <div
 	{@attach keepKeys}
-	class="board-card rounded-xl border border-border bg-card p-3 transition-colors hover:border-input
+	class="board-card min-w-0 rounded-xl border border-border bg-card p-3 transition-colors hover:border-input
 		{t.canMove ? 'cursor-grab' : ''}"
 >
 	<a
 		href={resolve('/tasks/[id]', { id: t.id })}
 		onclick={(e) => onopen(e, t.id)}
 		draggable="false"
-		class="block rounded-md text-[0.9rem] leading-snug font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50
+		class="line-clamp-2 block min-h-11 rounded-md py-0.5 text-[0.9rem] leading-snug font-medium [overflow-wrap:anywhere] outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-0
 			{t.status === 'done' ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}"
 		>{t.title}</a
 	>

@@ -8,7 +8,8 @@
 		doneChildCount: number;
 		parentCount: number;
 		source?: 'own' | 'assigned';
-		assigneeName?: string;
+		assigneeName?: string | null;
+		projectName?: string | null;
 		createdBy?: string;
 		assigneeId?: string | null;
 	};
@@ -31,7 +32,7 @@
 	import ConfirmDialog from '../ConfirmDialog.svelte';
 	import { dueLabel } from './group';
 	import { patchTask } from './patch';
-	import { lastStatus, type Status } from './status';
+	import { completions, lastStatus, type Status } from './status';
 
 	// nested：在某個 parent 底下展開時，parentCount 要扣掉目前這個 parent（D21）
 	// parentId：這一列是在哪個 parent 底下顯示（用於「移除」）；meId 用來判斷是否有操作權（建立者或指派人）
@@ -71,6 +72,9 @@
 	const setStatus = async (next: Status) => {
 		if (next === status || busy) return;
 		busy = true;
+		const before = status;
+		completions.delete(t.id);
+		const started = Date.now();
 		if (next === 'done') lastStatus.set(t.id, status);
 		override = next;
 		try {
@@ -80,13 +84,35 @@
 				toast(err, 'error');
 				return;
 			}
+			// nested（展開在父任務底下）的子任務不收合：收合會連同展開區一起閃動，只以 toast 回饋
 			if (next === 'done' && !nested) {
+				// 先讓勾選填色 + 爆開播完（≈450ms），再收合
+				await new Promise((r) =>
+					setTimeout(r, reduced.current ? 0 : Math.max(0, 450 - (Date.now() - started)))
+				);
 				collapsing = true;
 				await new Promise((r) => setTimeout(r, reduced.current ? 0 : 240));
 			}
 			await Promise.all([onchange?.(), refreshAll()]);
 			override = null;
 			collapsing = false;
+			if (next === 'done') {
+				const id = t.id;
+				const token = Symbol();
+				completions.set(id, token);
+				toast('已完成', 'success', 6000, {
+					label: '復原',
+					run: async () => {
+						if (completions.get(id) !== token) return toast('狀態已變更，無法復原', 'error');
+						completions.delete(id);
+						const err = await patchTask(id, { status: before });
+						if (err) return toast(err, 'error');
+						lastStatus.delete(id);
+						await Promise.all([onchange?.(), refreshAll()]);
+						toast('已復原');
+					}
+				});
+			}
 		} finally {
 			busy = false;
 		}
@@ -156,7 +182,7 @@
 			{#if t.childCount > 0}
 				<button
 					type="button"
-					class="grid h-10 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground"
+					class="relative grid h-11 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors after:absolute after:-inset-x-2 after:inset-y-0 hover:text-foreground"
 					aria-expanded={expanded}
 					aria-label={expanded ? '收合子任務' : '展開子任務'}
 					onclick={toggle}
@@ -179,11 +205,11 @@
 			<a
 				href={resolve('/tasks/[id]', { id: t.id })}
 				onclick={onopen ? (e) => onopen(e, t.id) : undefined}
-				class="min-w-0 flex-1 basis-40 rounded-md py-2 pl-1 text-[0.95rem] leading-snug font-medium outline-none focus-visible:ring-3 focus-visible:ring-ring/50
+				class="line-clamp-2 min-h-11 min-w-0 flex-1 basis-40 rounded-md py-2.5 pl-1 text-[0.95rem] leading-snug font-medium [overflow-wrap:anywhere] outline-none focus-visible:ring-3 focus-visible:ring-ring md:min-h-0
 					{status === 'done' ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}"
 				>{t.title}</a
 			>
-			<div class="ml-auto flex items-center gap-2 pl-8 md:ml-0 md:pl-2">
+			<div class="flex items-center gap-2 pl-20 md:ml-0 md:pl-2">
 				{#if t.source === 'assigned'}
 					<span class="rounded-full bg-secondary px-2 py-0.5 text-[0.7rem] text-muted-foreground"
 						>被指派</span
@@ -197,6 +223,12 @@
 						<ListTreeIcon class="size-3.5" aria-hidden="true" />
 						<span class="sr-only">子任務</span>{t.doneChildCount}/{t.childCount}
 					</span>
+				{/if}
+				{#if t.projectName}
+					<span
+						class="hidden max-w-32 truncate rounded-full bg-secondary px-2 py-0.5 text-[0.7rem] text-muted-foreground md:inline"
+						title="專案：{t.projectName}">{t.projectName}</span
+					>
 				{/if}
 				{#if otherParents > 0}
 					<span class="hidden text-xs text-muted-foreground lg:inline"
@@ -217,7 +249,7 @@
 				{#if canDetach}
 					<button
 						type="button"
-						class="grid size-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+						class="grid size-11 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:size-9"
 						aria-label="移除與上層任務的關聯：{t.title}"
 						title="移除"
 						onclick={() => (confirmOpen = true)}><XIcon class="size-4" /></button

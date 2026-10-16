@@ -28,6 +28,14 @@ describe('groupByDue', () => {
 		]);
 	});
 
+	it('逾期段內依日期由舊到新', () => {
+		const out = groupByDue(
+			[row('a', '2026-10-12'), row('b', '2026-10-10'), row('c', '2026-10-14')],
+			today
+		);
+		expect(out[0].rows.map((r) => r.id)).toEqual(['b', 'a', 'c']);
+	});
+
 	it('沒有任務時回傳空陣列', () => {
 		expect(groupByDue([], today)).toEqual([]);
 	});
@@ -38,6 +46,11 @@ describe('dueLabel', () => {
 		expect(dueLabel('2026-10-15', today)).toBe('今天');
 		expect(dueLabel('2026-10-16', today)).toBe('明天');
 		expect(dueLabel('2026-10-14', today)).toBe('昨天');
+		expect(dueLabel('2026-10-12', today)).toBe('10/12');
+		expect(dueLabel('2026-10-17', today)).toBe('週六');
+		expect(dueLabel('2026-10-18', today)).toBe('週日');
+		expect(dueLabel('2026-10-19', today)).toBe('10/19');
+		expect(dueLabel('2026-10-11', today)).toBe('10/11');
 		expect(dueLabel('2026-11-03', today)).toBe('11/3');
 		expect(dueLabel('2027-01-03', today)).toBe('2027/1/3');
 	});

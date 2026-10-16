@@ -24,6 +24,8 @@
 	let busy = $state(false);
 	// 失敗訊息只在 dialog 內顯示；開啟時清掉上一次的
 	let error = $state('');
+	// 欄位層級錯誤（取代瀏覽器原生泡泡；required 保留作無 JS 後備）
+	let nameError = $state('');
 	let name = $state('');
 	let desc = $state('');
 	const openCreate = () => {
@@ -33,6 +35,7 @@
 	// 關閉動畫結束後清掉輸入與錯誤，下次開啟不殘留
 	const resetCreate = () => {
 		error = '';
+		nameError = '';
 		name = '';
 		desc = '';
 	};
@@ -54,7 +57,7 @@
 				role="switch"
 				aria-checked={data.includeArchived}
 				onclick={toggleArchived}
-				class="inline-flex h-10 items-center gap-2.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9"
+				class="inline-flex h-11 items-center gap-2.5 rounded-lg px-2.5 text-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring md:h-9"
 			>
 				<span
 					class="relative h-5 w-9 rounded-full transition-colors {data.includeArchived
@@ -84,7 +87,7 @@
 				<li class="rise" style="--i: {i}">
 					<a
 						href={resolve('/projects/[id]', { id: p.id })}
-						class="group flex h-full flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-[transform,box-shadow,border-color] duration-200 ease-[var(--ease-out)] outline-none hover:-translate-y-0.5 hover:border-input hover:shadow-pop focus-visible:ring-3 focus-visible:ring-ring/50 md:p-5 {p.archivedAt
+						class="group flex h-full flex-col gap-3 rounded-2xl border border-border bg-card p-4 transition-[transform,box-shadow,border-color] duration-200 ease-[var(--ease-out)] outline-none hover:-translate-y-0.5 hover:border-input hover:shadow-pop focus-visible:ring-3 focus-visible:ring-ring md:p-5 {p.archivedAt
 							? 'opacity-70 saturate-50'
 							: ''}"
 					>
@@ -200,7 +203,15 @@
 		method="post"
 		action="?/create"
 		class="space-y-4"
-		use:enhance={() => {
+		novalidate
+		use:enhance={({ cancel, formElement }) => {
+			const input = formElement.elements.namedItem('name') as HTMLInputElement;
+			if (!input.value.trim()) {
+				nameError = '請輸入專案名稱';
+				input.focus();
+				return cancel();
+			}
+			nameError = '';
 			busy = true;
 			error = '';
 			return async ({ result, update }) => {
@@ -223,7 +234,19 @@
 		{/if}
 		<div class="space-y-2">
 			<Label for="p-name">名稱</Label>
-			<Input id="p-name" name="name" required maxlength={100} bind:value={name} />
+			<Input
+				id="p-name"
+				name="name"
+				required
+				maxlength={100}
+				bind:value={name}
+				aria-invalid={nameError ? true : undefined}
+				aria-describedby={nameError ? 'p-name-err' : undefined}
+				oninput={() => (nameError = '')}
+			/>
+			{#if nameError}<p id="p-name-err" class="text-sm text-destructive" role="alert">
+					{nameError}
+				</p>{/if}
 		</div>
 		<div class="space-y-2">
 			<Label for="p-desc">描述（Markdown，選填）</Label>

@@ -25,6 +25,9 @@
 
 	let { data, form }: PageProps = $props();
 
+	// onconfirm 執行時 banning 已被關閉動作清空，另存一份
+	let banTarget: (typeof data.members)[number] | null = null;
+	let banning = $state<(typeof data.members)[number] | null>(null);
 	let revoking = $state<(typeof data.pendingInvitations)[number] | null>(null);
 
 	const roleLabel: Record<string, string> = {
@@ -200,7 +203,7 @@
 								{#if data.canManage && !self}
 									<DropdownMenu.Root>
 										<DropdownMenu.Trigger
-											class="inline-grid size-10 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none data-[state=open]:bg-muted md:size-9"
+											class="inline-grid size-10 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none data-[state=open]:bg-muted md:size-9"
 											aria-label="{m.name} 的操作"
 											><EllipsisIcon class="size-5" /></DropdownMenu.Trigger
 										>
@@ -239,11 +242,14 @@
 														? ''
 														: 'text-destructive'}"
 													onSelect={() =>
-														act(
-															'?/setBanned',
-															{ userId: m.id, banned: m.banned ? 'false' : 'true' },
-															m.banned ? `已啟用 ${m.name}` : `已停用 ${m.name}`
-														)}>{m.banned ? '啟用帳號' : '停用帳號'}</DropdownMenu.Item
+														m.banned
+															? act(
+																	'?/setBanned',
+																	{ userId: m.id, banned: 'false' },
+																	`已啟用 ${m.name}`
+																)
+															: ((banning = m), (banTarget = m))}
+													>{m.banned ? '啟用帳號' : '停用帳號'}</DropdownMenu.Item
 												>
 											</DropdownMenu.Content>
 										</DropdownMenu.Portal>
@@ -257,6 +263,20 @@
 		</div>
 	</section>
 
+	<ConfirmDialog
+		bind:open={() => banning !== null, (v) => !v && (banning = null)}
+		title="停用「{banning?.name ?? ''}」？"
+		description="對方將無法登入，目前的登入也會被登出。之後可以重新啟用。"
+		confirmLabel="停用"
+		onconfirm={async () => {
+			if (banTarget)
+				await act(
+					'?/setBanned',
+					{ userId: banTarget.id, banned: 'true' },
+					`已停用 ${banTarget.name}`
+				);
+		}}
+	/>
 	<ConfirmDialog
 		bind:open={() => revoking !== null, (v) => !v && (revoking = null)}
 		title="撤銷邀請？"

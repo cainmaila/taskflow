@@ -21,10 +21,21 @@
 			{:else}
 				<CheckIcon class="size-4 shrink-0 text-status-done" aria-hidden="true" />
 			{/if}
-			<span class="flex-1">{t.message}</span>
+			<span class="min-w-0 flex-1 [overflow-wrap:anywhere]">{t.message}</span>
+			{#if t.action}
+				{@const act = t.action}
+				<button
+					type="button"
+					class="h-10 shrink-0 rounded-md px-3 text-sm font-semibold text-primary transition-colors hover:bg-muted md:h-8"
+					onclick={() => {
+						dismiss(t.id);
+						act.run();
+					}}>{act.label}</button
+				>
+			{/if}
 			<button
 				type="button"
-				class="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+				class="grid size-10 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:size-8"
 				aria-label="關閉通知"
 				onclick={() => dismiss(t.id)}><XIcon class="size-4" /></button
 			>

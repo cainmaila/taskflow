@@ -65,7 +65,7 @@
 				>
 				<Dialog.Description class="sr-only">檢視與編輯任務，按 Esc 關閉</Dialog.Description>
 				<Dialog.Close
-					class="grid size-10 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+					class="grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring"
 					aria-label="關閉面板"><XIcon class="size-5" /></Dialog.Close
 				>
 			</div>

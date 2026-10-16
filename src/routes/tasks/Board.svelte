@@ -188,7 +188,7 @@
 							animate:flip={{ duration: ms }}
 							data-nomove={t.canMove ? undefined : ''}
 							aria-label={t.title}
-							class="rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+							class="rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-ring"
 						>
 							{#if (t as Record<string, unknown>)[SHADOW_ITEM_MARKER_PROPERTY_NAME]}
 								<div

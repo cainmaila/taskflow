@@ -30,11 +30,6 @@
 			};
 		}}
 	>
-		{#if form?.message}
-			<Alert.Root variant="destructive"
-				><Alert.Description>{form.message}</Alert.Description></Alert.Root
-			>
-		{/if}
 		<div class="space-y-2">
 			<Label for="email">Email</Label>
 			<Input
@@ -50,5 +45,13 @@
 		<Button type="submit" size="lg" class="w-full" disabled={busy}>
 			{#if busy}<LoaderIcon class="animate-spin" aria-hidden="true" />登入中…{:else}登入{/if}
 		</Button>
+		<!-- 預留高度並 aria-live，錯誤出現時表單不會被推動 -->
+		<div class="min-h-14" aria-live="polite">
+			{#if form?.message}
+				<Alert.Root variant="destructive"
+					><Alert.Description>{form.message}</Alert.Description></Alert.Root
+				>
+			{/if}
+		</div>
 	</form>
 </AuthShell>

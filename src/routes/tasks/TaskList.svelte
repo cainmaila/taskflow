@@ -40,15 +40,22 @@
 	</section>
 {:else}
 	<div class="grid place-items-center gap-2 py-16 text-center">
-		<CircleCheckIcon class="size-10 text-muted-foreground/50" aria-hidden="true" />
-		<p class="max-w-xs text-sm text-muted-foreground">{empty}</p>
+		{#if done.length}
+			<!-- 全部完成的小慶祝 -->
+			<CircleCheckIcon class="celebrate size-14 text-status-done" aria-hidden="true" />
+			<p class="text-base font-semibold">全部完成了</p>
+			<p class="max-w-xs text-sm text-muted-foreground">{empty}</p>
+		{:else}
+			<CircleCheckIcon class="size-10 text-muted-foreground/50" aria-hidden="true" />
+			<p class="max-w-xs text-sm text-muted-foreground">{empty}</p>
+		{/if}
 	</div>
 {/each}
 
 {#if done.length}
 	<details open={doneOpen} class="group/done mt-2">
 		<summary
-			class="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 [&::-webkit-details-marker]:hidden"
+			class="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-md px-1 text-xs font-semibold tracking-wide text-muted-foreground uppercase outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
 		>
 			<ChevronRightIcon
 				class="size-4 transition-transform duration-200 group-open/done:rotate-90"

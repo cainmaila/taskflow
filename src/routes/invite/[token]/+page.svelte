@@ -15,7 +15,7 @@
 
 <svelte:head><title>接受邀請 - Taskflow</title></svelte:head>
 
-<AuthShell title="接受邀請" description="設定姓名與密碼，完成後以 {data.email} 登入。">
+<AuthShell title="接受邀請" description="設定姓名與密碼後，就能用 {data.email} 登入。">
 	<form
 		method="post"
 		class="space-y-4"
@@ -30,11 +30,6 @@
 			};
 		}}
 	>
-		{#if form?.message}
-			<Alert.Root variant="destructive"
-				><Alert.Description>{form.message}</Alert.Description></Alert.Root
-			>
-		{/if}
 		<div class="space-y-2">
 			<Label for="name">姓名</Label>
 			<Input id="name" name="name" autocomplete="name" value={form?.name ?? ''} required />
@@ -48,5 +43,13 @@
 		<Button type="submit" size="lg" class="w-full" disabled={busy}>
 			{#if busy}<LoaderIcon class="animate-spin" aria-hidden="true" />建立中…{:else}建立帳號{/if}
 		</Button>
+		<!-- 預留高度並 aria-live，錯誤出現時表單不會被推動 -->
+		<div class="min-h-14" aria-live="polite">
+			{#if form?.message}
+				<Alert.Root variant="destructive"
+					><Alert.Description>{form.message}</Alert.Description></Alert.Root
+				>
+			{/if}
+		</div>
 	</form>
 </AuthShell>

@@ -82,4 +82,25 @@ describe('project detail routes', () => {
 		});
 		expect(await actions.unarchive!(ev('mgr', 'manager'))).toEqual({ ok: '', section: 'info' });
 	});
+
+	it('addTask: member creates and attaches; non-member and archived are rejected', async () => {
+		const f = { title: 'Quick', dueDate: '2026-10-20' };
+		expect(await actions.addTask!(ev('mem', 'member', f))).toEqual({
+			ok: '已新增任務',
+			section: 'tasks'
+		});
+		const d = (await load!(ev('mem', 'member'))) as { tasks: { title: string }[] };
+		expect(d.tasks.map((x) => x.title)).toEqual(['Quick']);
+		// 專案成員（mgr）也看得到：任務已掛入
+		const o = (await load!(ev('mgr', 'manager'))) as { tasks: { title: string }[] };
+		expect(o.tasks).toHaveLength(1);
+		expect(await run(actions.addTask!(ev('out', 'member', f)))).toMatchObject({ status: 404 });
+		expect(await actions.addTask!(ev('mem', 'member', { title: ' ', dueDate: '' }))).toMatchObject({
+			status: 400
+		});
+		await actions.archive!(ev('mgr', 'manager'));
+		expect(await actions.addTask!(ev('mem', 'member', f))).toMatchObject({ status: 400 });
+		// 失敗不留下孤兒任務
+		expect((await t.db.select().from(task).all()).length).toBe(1);
+	});
 });

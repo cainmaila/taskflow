@@ -4,6 +4,7 @@ import { getDb } from '#lib/server/db/index.ts';
 import { projectFailure, projectLoadError } from '#lib/server/project-http.ts';
 import {
 	addMember,
+	createTaskInProject,
 	detachTask,
 	getProject,
 	listAddableUsers,
@@ -53,16 +54,20 @@ const run =
 		) => Promise<unknown>,
 		ok: string,
 		// 訊息顯示在哪個區塊旁（info 為頁首）
-		section: 'info' | 'members' | 'tasks'
+		section: 'info' | 'members' | 'tasks',
+		// 失敗時回填的表單欄位
+		echo: string[] = []
 	): import('@sveltejs/kit').Action<{ id: string }> =>
 	async ({ request, locals, params }) => {
 		const me = locals.user;
 		if (!me) redirect(302, '/login');
+		const form = await request.formData();
 		try {
-			await fn(getDb(env.DB), actor(me), params.id, await request.formData());
+			await fn(getDb(env.DB), actor(me), params.id, form);
 		} catch (e) {
 			const r = projectFailure(e);
-			return fail(r.status, { ...r.data, section });
+			const back = Object.fromEntries(echo.map((k) => [k, form.get(k)?.toString() ?? '']));
+			return fail(r.status, { ...r.data, ...back, section });
 		}
 		return { ok, section };
 	};
@@ -93,6 +98,13 @@ export const actions: Actions = {
 		(db, a, id, f) => removeMember(db, a, id, str(f, 'userId')),
 		'已移除成員',
 		'members'
+	),
+	addTask: run(
+		(db, a, id, f) =>
+			createTaskInProject(db, a, id, { title: str(f, 'title'), dueDate: str(f, 'dueDate') }),
+		'已新增任務',
+		'tasks',
+		['title', 'dueDate']
 	),
 	detachTask: run((db, a, id, f) => detachTask(db, a, id, str(f, 'taskId')), '已取消掛接', 'tasks')
 };

@@ -35,7 +35,7 @@
 			aria-pressed={shown}
 			aria-label="顯示密碼"
 			onclick={() => (shown = !shown)}
-			class="absolute top-0 right-0 grid size-10 place-items-center rounded-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:size-9"
+			class="absolute top-0 right-0 grid size-10 place-items-center rounded-lg text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring focus-visible:outline-none md:size-9"
 		>
 			{#if shown}<EyeOffIcon class="size-4" aria-hidden="true" />{:else}<EyeIcon
 					class="size-4"

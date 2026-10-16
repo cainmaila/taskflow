@@ -9,8 +9,9 @@
 		onselect
 	}: { status: Status; editable?: boolean; onselect: (s: Status) => void } = $props();
 
+	// 手機觸控目標 ≥44px：用偽元素擴大命中區，不改視覺大小
 	const pill =
-		'inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-transparent px-2.5 text-xs font-medium whitespace-nowrap';
+		'relative after:absolute after:inset-x-0 after:-inset-y-2 inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-transparent px-2.5 text-xs font-medium whitespace-nowrap';
 </script>
 
 {#snippet dot(s: Status)}
@@ -20,7 +21,7 @@
 {#if editable}
 	<DropdownMenu.Root>
 		<DropdownMenu.Trigger
-			class="{pill} transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 data-[state=open]:bg-muted"
+			class="{pill} transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring data-[state=open]:bg-muted"
 			aria-label="狀態：{statusLabel[status]}，點擊變更"
 		>
 			{@render dot(status)}{statusLabel[status]}

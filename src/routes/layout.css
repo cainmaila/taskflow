@@ -67,6 +67,7 @@
 	--color-card-foreground: var(--card-foreground);
 	--color-border: var(--border);
 	--color-input: var(--input);
+	--color-control: var(--control);
 	--color-primary: var(--primary);
 	--color-primary-hover: var(--primary-hover);
 	--color-primary-press: var(--primary-press);
@@ -252,4 +253,81 @@
 /* 新表單：輸入框、文字區、下拉用達標的邊界色 */
 .strong-fields :is([data-slot='input'], [data-slot='textarea'], [data-slot='native-select']) {
 	border-color: var(--control);
+}
+
+/* 長字串（無空白）不得撐破版面；程式碼區塊與表格自行橫向捲動 */
+.prose {
+	overflow-wrap: anywhere;
+}
+.prose pre,
+.prose table {
+	display: block;
+	max-width: 100%;
+	overflow-x: auto;
+}
+[data-slot='alert-dialog-title'],
+[data-slot='alert-dialog-description'] {
+	overflow-wrap: anywhere;
+}
+
+/* 完成儀式：填色 + 勾（≈420ms）→ 圓環與粒子爆開（≈600ms）；之後才收合（TaskRow 延遲 ≈450ms） */
+.check-burst {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	display: grid;
+	place-items: center;
+}
+.check-burst::before {
+	content: '';
+	position: absolute;
+	width: 22px;
+	height: 22px;
+	border-radius: 9999px;
+	border: 2px solid var(--status-done);
+	animation: burst-ring 520ms var(--ease-out) both;
+}
+.check-burst i {
+	position: absolute;
+	width: 4px;
+	height: 4px;
+	border-radius: 9999px;
+	background: var(--status-done);
+	animation: burst-dot 560ms var(--ease-out) both;
+}
+@keyframes burst-ring {
+	from {
+		transform: scale(0.8);
+		opacity: 0.9;
+	}
+	to {
+		transform: scale(2.1);
+		opacity: 0;
+	}
+}
+@keyframes burst-dot {
+	from {
+		transform: rotate(var(--a)) translateY(-8px) scale(1);
+		opacity: 1;
+	}
+	to {
+		transform: rotate(var(--a)) translateY(-20px) scale(0.3);
+		opacity: 0;
+	}
+}
+@keyframes celebrate-pop {
+	0% {
+		transform: scale(0.6);
+		opacity: 0;
+	}
+	60% {
+		transform: scale(1.12);
+		opacity: 1;
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+.celebrate {
+	animation: celebrate-pop 600ms var(--ease-spring) both;
 }

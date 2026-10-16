@@ -23,7 +23,9 @@
 		<Logo class="mb-8 lg:hidden" />
 		<div class="strong-fields rise m-auto w-full max-w-sm">
 			<h1 class="text-2xl font-semibold tracking-tight">{title}</h1>
-			<p class="mt-1.5 mb-7 text-sm text-muted-foreground">{description}</p>
+			<p class="mt-1.5 mb-7 text-sm text-balance [overflow-wrap:anywhere] text-muted-foreground">
+				{description}
+			</p>
 			{@render children()}
 		</div>
 	</div>
