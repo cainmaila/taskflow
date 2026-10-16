@@ -19,6 +19,8 @@
 	--muted-foreground: #9ba2af;
 	--border: #272b34;
 	--input: #313642;
+	/* 表單控制項邊界（WCAG 1.4.11 要 3:1）；--border 只做分隔線 */
+	--control: #6b7280;
 	--secondary: #232730;
 	--secondary-foreground: #eceef2;
 	--accent: #232730;
@@ -192,4 +194,62 @@
 	::view-transition-new(*) {
 		animation: none !important;
 	}
+}
+
+/* 品牌底圖：漸層光暈緩慢漂移 + 淡格線；reduced-motion 時靜止 */
+.brand-bg {
+	position: relative;
+	overflow: hidden;
+	background: var(--sidebar);
+}
+.brand-bg::before {
+	content: '';
+	position: absolute;
+	inset: -25%;
+	background:
+		radial-gradient(
+			40% 40% at 25% 30%,
+			color-mix(in oklch, var(--primary) 38%, transparent),
+			transparent
+		),
+		radial-gradient(
+			35% 35% at 75% 70%,
+			color-mix(in oklch, var(--status-progress) 26%, transparent),
+			transparent
+		);
+	animation: brand-drift 16s ease-in-out infinite alternate;
+}
+.brand-bg::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background-image:
+		linear-gradient(var(--border) 1px, transparent 1px),
+		linear-gradient(90deg, var(--border) 1px, transparent 1px);
+	background-size: 44px 44px;
+	-webkit-mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);
+	mask-image: radial-gradient(ellipse at center, #000 20%, transparent 75%);
+	opacity: 0.6;
+}
+@keyframes brand-drift {
+	to {
+		transform: translate3d(6%, -5%, 0) rotate(8deg) scale(1.08);
+	}
+}
+
+/* 進場：以 --i 做輕量 stagger */
+@keyframes rise-in {
+	from {
+		opacity: 0;
+		transform: translateY(10px);
+	}
+}
+.rise {
+	animation: rise-in var(--dur-slow) var(--ease-out) both;
+	animation-delay: calc(min(var(--i, 0), 8) * 40ms);
+}
+
+/* 新表單：輸入框、文字區、下拉用達標的邊界色 */
+.strong-fields :is([data-slot='input'], [data-slot='textarea'], [data-slot='native-select']) {
+	border-color: var(--control);
 }
